@@ -1,5 +1,5 @@
 {
-  "name": "vitejs-vite-manz15z8",
+  "name": "evolutifisio",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,22 +10,25 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/generative-ai": "latest",
-    "firebase": "latest",
-    "lucide-react": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "@google/generative-ai": "^0.21.0",
+    "firebase": "^11.0.1",
+    "lucide-react": "^0.454.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@eslint/js": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
-    "eslint": "latest",
-    "eslint-plugin-react": "latest",
-    "eslint-plugin-react-hooks": "latest",
-    "eslint-plugin-react-refresh": "latest",
-    "globals": "latest",
-    "vite": "latest"
+    "@eslint/js": "^9.13.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.14",
+    "globals": "^15.11.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.10"
   }
 }
