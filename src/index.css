@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Material 3 Tonal Palettes - Blue/Slate Theme */
+  --m3-primary: #005ac1;
+  --m3-on-primary: #ffffff;
+  --m3-primary-container: #d8e2ff;
+  --m3-on-primary-container: #001a41;
+  
+  --m3-surface: #fdfbff;
+  --m3-on-surface: #1a1b1e;
+  --m3-surface-variant: #e1e2ec;
+  --m3-on-surface-variant: #44474f;
+  
+  --m3-outline: #74777f;
+  --m3-surface-container-low: #f7f3f9;
+  --m3-surface-container: #f3eff4;
+  --m3-surface-container-high: #ece7ed;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--m3-surface);
+  color: var(--m3-on-surface);
+  @apply antialiased;
+}
+
+/* Material 3 Card Style */
+.m3-card {
+  background-color: var(--m3-surface-container-low);
+  border-radius: 1.5rem; /* 24px */
+  @apply p-6 transition-all duration-200 border border-transparent;
+}
+
+.m3-card:hover {
+  background-color: var(--m3-surface-container);
+  @apply shadow-sm;
+}
+
+/* Scrollbar Customization para Massive Data */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--m3-outline);
+  border-radius: 10px;
+}
