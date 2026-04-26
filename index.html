@@ -1,18 +1,46 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-br">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/react.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FisioPro</title>
+    
+    <title>EVOLUTI FISIO - Gestão Clínica Inteligente</title>
 
-    <!-- Aqui está o nosso script do Tailwind para estilizar o projeto na hora -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              m3: {
+                primary: '#005ac1',
+                surface: '#fdfbff',
+                container: '#d8e2ff',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <style>
+      /* Prevenção de "pulo" de layout enquanto o React carrega */
+      body {
+        margin: 0;
+        background-color: #fdfbff;
+        overflow-x: hidden;
+      }
+      
+      #root {
+        min-height: 100vh;
+      }
+    </style>
   </head>
   <body>
-    <!-- Esta é a âncora onde o React (App.jsx) será renderizado -->
     <div id="root"></div>
 
-    <!-- Este script carrega o motor do React do Vite -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
