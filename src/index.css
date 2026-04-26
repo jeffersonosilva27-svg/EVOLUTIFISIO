@@ -29,7 +29,7 @@ body {
   @apply antialiased;
 }
 
-/* Material 3 Card Style */
+/* Material 3 Card Style (Base para os painéis) */
 .m3-card {
   background-color: var(--m3-surface-container-low);
   border-radius: 1.5rem; /* 24px */
@@ -41,15 +41,18 @@ body {
   @apply shadow-sm;
 }
 
-/* Scrollbar Customization para Massive Data */
-::-webkit-scrollbar {
+/* Scrollbar Customization para Massive Data (Visual Limpo e Moderno) */
+.custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+.custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--m3-outline);
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
   border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
 }
