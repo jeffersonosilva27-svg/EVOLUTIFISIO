@@ -54,55 +54,13 @@ const TUTORIAL_CHAPTERS = [
 ];
 
 const TUTORIAL_STEPS = [
-  { 
-    chapterId: 'start',
-    titulo: "Olá! Eu sou o Choquito ⚡", 
-    texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Comigo a energia nunca acaba! Vamos fazer uma tour rápida para você aprender a usar tudo sem esforço.", 
-    view: 'dashboard', 
-    botao: "Começar Tour Guiada" 
-  },
-  { 
-    chapterId: 'basico',
-    titulo: "O Painel Inicial", 
-    texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa de assinar hoje. Mantenha os seus olhos sempre aqui!", 
-    view: 'dashboard', 
-    botao: "Entendi" 
-  },
-  { 
-    chapterId: 'basico',
-    titulo: "A Agenda Inteligente", 
-    texto: "Nesta aba, você agenda sessões simples ou em lotes. O nosso algoritmo de conflitos ativará a 'Dupla Janela' se houver sobreposição de horários.", 
-    view: 'agenda', 
-    botao: "Ir para Clínico" 
-  },
-  { 
-    chapterId: 'fisio',
-    titulo: "Prontuário Completo (SOAP)", 
-    texto: "A aba Pacientes é o coração do atendimento. Clique num paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorizar a dor (Gráfico EVA).", 
-    view: 'pacientes', 
-    botao: "Ver Planos de Tratamento" 
-  },
-  { 
-    chapterId: 'fisio',
-    titulo: "Prescrição de Exercícios", 
-    texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares, com cargas e séries perfeitas.", 
-    view: 'pacientes', 
-    botao: "Conhecer o Caixa" 
-  },
-  { 
-    chapterId: 'money',
-    titulo: "Controlo Financeiro", 
-    texto: "Sempre que uma sessão é marcada como 'Realizada', o valor cai aqui automaticamente. Acompanhe a previsão de recebimentos e o ticket médio da clínica.", 
-    view: 'financeiro', 
-    botao: "Finalizar Tour" 
-  },
-  { 
-    chapterId: 'end',
-    titulo: "É Tudo Seu! 🚀", 
-    texto: "Você concluiu a tour guiada! O sistema está pronto para receber toda a sua energia. Se precisar de mim novamente, basta clicar no ícone do raio azul lá em cima!", 
-    view: 'dashboard', 
-    botao: "Começar a Usar Agora" 
-  }
+  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Comigo a energia nunca acaba! Vamos fazer uma tour rápida para você aprender a usar tudo sem esforço.", view: 'dashboard', botao: "Começar Tour Guiada" },
+  { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa de assinar hoje. Mantenha os seus olhos sempre aqui!", view: 'dashboard', botao: "Entendi" },
+  { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes. O nosso algoritmo de conflitos ativará a 'Dupla Janela' se houver sobreposição de horários.", view: 'agenda', botao: "Ir para Clínico" },
+  { chapterId: 'fisio', titulo: "Prontuário Completo (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique num paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorizar a dor (Gráfico EVA).", view: 'pacientes', botao: "Ver Planos de Tratamento" },
+  { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares, com cargas e séries perfeitas.", view: 'pacientes', botao: "Conhecer o Caixa" },
+  { chapterId: 'money', titulo: "Controlo Financeiro", texto: "Sempre que uma sessão é marcada como 'Realizada', o valor cai aqui automaticamente. Acompanhe a previsão de recebimentos e o ticket médio da clínica.", view: 'financeiro', botao: "Finalizar Tour" },
+  { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "Você concluiu a tour guiada! O sistema está pronto para receber toda a sua energia. Se precisar de mim novamente, basta clicar no ícone do raio azul lá em cima!", view: 'dashboard', botao: "Começar a Usar Agora" }
 ];
 
 function MainApp() {
@@ -245,14 +203,25 @@ function MainApp() {
     }
   }, [user]);
 
-  const hasAccess = (roles) => user && (roles.includes('any') || roles.includes(user.role));
+  // A REGRA DE OURO PARA DETETAR A RECEÇÃO!
+  const isRecepcao = user?.role === 'recepcao' || user?.role === 'recepcionista' || user?.categoriaBase === 'recepcao';
+  const isGestor = user?.role === 'gestor_clinico';
+
+  const hasAccess = (roles) => {
+    if (!user) return false;
+    if (roles.includes('any')) return true;
+    if (roles.includes(user.role)) return true;
+    if (isRecepcao && roles.includes('recepcao')) return true;
+    return false;
+  };
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Activity, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
-    { id: 'financeiro', icon: DollarSign, label: 'Caixa', roles: ['gestor_clinico', 'admin_fin'] },
+    // A receção agora tem acesso ao separador financeiro!
+    { id: 'financeiro', icon: DollarSign, label: 'Caixa', roles: ['gestor_clinico', 'admin_fin', 'recepcao'] },
     { id: 'equipe', icon: Settings, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
 
@@ -270,7 +239,7 @@ function MainApp() {
     // =========================================================================
     // NOVO PAINEL EXCLUSIVO DA RECEPÇÃO
     // =========================================================================
-    if (user.role === 'recepcao' || user.role === 'recepcionista' || user.role === 'atendimento') {
+    if (isRecepcao && !isGestor) {
         const sessoesValidas = agendaGeralHoje.filter(a => a.status !== 'cancelado');
         const sessoesPendentesGeral = sessoesValidas.filter(a => !a.status || a.status === 'pendente').length;
         const sessoesRealizadasGeral = sessoesValidas.filter(a => a.status === 'realizado').length;
@@ -280,10 +249,9 @@ function MainApp() {
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
                   <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel da Recepção</h1>
-                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Controle o fluxo da clínica em tempo real.</p>
+                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Controle o fluxo master da clínica em tempo real.</p>
                 </div>
                 
-                {/* 4 CARTÕES DE ESTATÍSTICAS */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-[#00A1FF] text-white rounded-[24px] p-6 shadow-lg relative overflow-hidden">
                         <div className="relative z-10">
@@ -309,11 +277,10 @@ function MainApp() {
                     </div>
                 </div>
 
-                {/* GRELHA COMPLETA DO DIA */}
                 <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-black text-[#0F214A] flex items-center gap-2">
-                            <Users className="text-[#00A1FF]"/> Agenda Completa de Hoje
+                            <Users className="text-[#00A1FF]"/> Agenda Master Diária
                         </h3>
                     </div>
 
@@ -402,8 +369,6 @@ function MainApp() {
     // =========================================================================
     // PAINEL CLÍNICO (GESTOR, FISIO E TO)
     // =========================================================================
-    
-    // Filtra os cancelados para não bagunçar o dashboard clínico
     const agendaClinicaHoje = agendaGeralHoje.filter(a => a.status !== 'cancelado');
     const minhaAgendaHoje = agendaClinicaHoje.filter(a => a.profissionalId === user.id);
 
@@ -421,7 +386,6 @@ function MainApp() {
     }).length;
 
     const rotuloMetricas = user.role === 'gestor_clinico' ? 'Sessões da Clínica Hoje' : 'Suas Sessões Hoje';
-    
     const meusExercicios = user.role === 'gestor_clinico' ? exerciciosGlobais : exerciciosGlobais.filter(e => e.profissional === user.name);
     const ultimosExercicios = meusExercicios.slice(0, 6);
 

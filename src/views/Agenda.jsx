@@ -28,6 +28,10 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
+const limparDadosParaFirestore = (dados) => {
+  return JSON.parse(JSON.stringify(dados));
+};
+
 export default function Agenda({ user, hasAccess, navegarPara }) {
   const [agendamentos, setAgendamentos] = useState([]);
   const [pacientes, setPacientes] = useState([]);
@@ -60,9 +64,17 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     const unsubPac = onSnapshot(collection(db, "pacientes"), snap => {
       setPacientes(snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || 'Paciente sem nome' })));
     });
+    
+    // A REGRA DE OURO DA AGENDA: Filtra e esconde a receção da lista de fisioterapeutas!
     const unsubProf = onSnapshot(collection(db, "profissionais"), snap => {
-      setProfissionais(snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || '', categoriaBase: d.data()?.categoriaBase || '' })).filter(p => p.nome));
+      setProfissionais(snap.docs.map(d => ({ 
+          id: d.id, 
+          nome: d.data()?.nome || '', 
+          categoriaBase: d.data()?.categoriaBase || '',
+          role: d.data()?.role || ''
+      })).filter(p => p.nome && p.categoriaBase !== 'recepcao' && p.role !== 'recepcao' && p.role !== 'recepcionista'));
     });
+    
     return () => { unsubAgenda(); unsubPac(); unsubProf(); };
   }, [user]);
 
@@ -200,9 +212,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     setCarregandoIA(false);
   };
 
-  // =================================================================================
-  // O NOVO MOTOR "AUTO-SKIP" (À PROVA DE BALA PARA LOTE E DUPLICADOS)
-  // =================================================================================
   const processarNovoAgendamento = async () => {
       setCarregandoIA(true);
       try {
@@ -212,7 +221,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
           if (!isLote) {
              const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
              if (conflito) {
-                 // Apenas para 1 sessão, mostra o conflito normalmente
                  setFilaConflitos([{ novo: {...form}, existente: conflito }]);
                  setIdxConflito(0);
                  setDualExistente(conflito);
@@ -234,7 +242,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                  setMostrarForm(false);
              }
           } else {
-             // MODO LOTE: AUTO-SKIP (Não bloqueia se houver choque de horários)
              if (loteConfig.diasSemana.length === 0) {
                 setCarregandoIA(false);
                 return alert("Selecione pelo menos um dia da semana para agendar o lote!");
@@ -257,7 +264,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                    const conflito = verificarConflito(dIso, form.hora, form.profissionalId, form.local);
                    
                    if (conflito) {
-                       ignoradasPorConflito++; // Pula silenciosamente para não bloquear a app
+                       ignoradasPorConflito++; 
                    } else {
                        sessoesParaSalvar.push({
                            data: dIso,
@@ -269,7 +276,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                 dt.setDate(dt.getDate() + 1); 
              }
              
-             // Grava apenas as sessões livres na base de dados
              if (sessoesParaSalvar.length > 0) {
                  for (const s of sessoesParaSalvar) {
                      await addDoc(collection(db, "agendamentos"), {
@@ -536,7 +542,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                  <button onClick={rotearParaEvolucao} className="flex-[2] bg-green-500 text-white py-3 rounded-xl font-black flex justify-center items-center gap-2 shadow-md hover:bg-green-600 transition-colors text-sm">
                    <FileText size={16}/> Abrir Prontuário
                  </button>
-                 {hasAccess(['gestor_clinico', 'recepcao']) && (
+                 {hasAccess(['gestor_clinico', 'recepcao', 'recepcionista']) && (
                    <button onClick={() => setModalCancelamento(true)} className="px-4 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors border border-red-100 flex items-center gap-2 text-sm">
                      <XCircle size={16}/> Cancelar / Erro
                    </button>
