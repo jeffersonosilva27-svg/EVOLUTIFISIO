@@ -2,7 +2,7 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, Zap, ListChecks
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -46,29 +46,28 @@ const getMinutos = (horaStr) => {
 };
 
 // ===================================================================================
-// DADOS DO TUTORIAL HIERARQUIZADO DO RAIOZINHO
+// DADOS DO TUTORIAL DO CHOQUITO
 // ===================================================================================
 const TUTORIAL_CHAPTERS = [
-  { id: 'start', title: 'Boas-vindas', color: 'bg-yellow-400' },
-  { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-blue-500' },
-  { id: 'fisio', title: 'Fase 2: Ferramentas do Fisio', color: 'bg-green-600' },
-  { id: 'money', title: 'Fase 3: Financeiro', color: 'bg-purple-600' },
-  { id: 'end', title: 'Tudo Pronto!', color: 'bg-slate-900' }
+  { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
+  { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-[#00A1FF]', textColor: 'text-white' },
+  { id: 'fisio', title: 'Fase 2: Ferramentas do Fisio', color: 'bg-[#0F214A]', textColor: 'text-white' },
+  { id: 'money', title: 'Fase 3: Financeiro', color: 'bg-green-500', textColor: 'text-white' },
+  { id: 'end', title: 'Tudo Pronto!', color: 'bg-[#00A1FF]', textColor: 'text-white' }
 ];
 
 const TUTORIAL_STEPS = [
   { 
     chapterId: 'start',
-    titulo: "Olá! Eu sou o Raiozinho ⚡", 
-    texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Vamos dar uma tour rápida dividida em fases para que você aprenda a usar sem esforço.", 
+    titulo: "Olá! Eu sou o Choquito ⚡", 
+    texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Comigo a energia nunca acaba! Vamos fazer uma tour rápida para você aprender a usar tudo sem esforço.", 
     view: 'dashboard', 
-    botao: "Começar Tour Hierárquica" 
+    botao: "Começar Tour Guiada" 
   },
-  // FASE 1: BÁSICO (RECEPÇÃO / GERAL)
   { 
     chapterId: 'basico',
     titulo: "O Painel Inicial", 
-    texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa de assinar hoje. Mantenha os seus olhos aqui!", 
+    texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa de assinar hoje. Mantenha os seus olhos sempre aqui!", 
     view: 'dashboard', 
     botao: "Entendi" 
   },
@@ -79,33 +78,31 @@ const TUTORIAL_STEPS = [
     view: 'agenda', 
     botao: "Ir para Clínico" 
   },
-  // FASE 2: FERRAMENTAS DO FISIO
   { 
     chapterId: 'fisio',
     titulo: "Prontuário Completo (SOAP)", 
-    texto: "A aba Pacientes é o coração do seu atendimento. Clique num paciente para abrir o prontuário, escrever evoluções SOAP guiadas por IA e monitorizar a dor (Gráfico EVA).", 
+    texto: "A aba Pacientes é o coração do atendimento. Clique num paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorizar a dor (Gráfico EVA).", 
     view: 'pacientes', 
     botao: "Ver Planos de Tratamento" 
   },
   { 
     chapterId: 'fisio',
     titulo: "Prescrição de Exercícios", 
-    texto: "Ainda na ficha do paciente, existe o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares específicos, com cargas e séries.", 
+    texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares, com cargas e séries perfeitas.", 
     view: 'pacientes', 
     botao: "Conhecer o Caixa" 
   },
-  // FASE 3: FINANCEIRO
   { 
     chapterId: 'money',
-    titulo: "Controle do Fluxo de Caixa", 
-    texto: "Sempre que uma sessão é marcada como 'Realizada', o valor cai aqui automaticamente. Acompanhe a previsão de recebimentos e o ticket médio da sua clínica.", 
+    titulo: "Controlo Financeiro", 
+    texto: "Sempre que uma sessão é marcada como 'Realizada', o valor cai aqui automaticamente. Acompanhe a previsão de recebimentos e o ticket médio da clínica.", 
     view: 'financeiro', 
     botao: "Finalizar Tour" 
   },
   { 
     chapterId: 'end',
     titulo: "É Tudo Seu! 🚀", 
-    texto: "Parabéns! Você concluiu a tour guiada. O sistema está pronto para ser usado. Lembre-se: clicar no ícone do raio no topo me chamará novamente.", 
+    texto: "Você concluiu a tour guiada! O sistema está pronto para receber toda a sua energia. Se precisar de mim novamente, basta clicar no ícone do raio azul lá em cima!", 
     view: 'dashboard', 
     botao: "Começar a Usar Agora" 
   }
@@ -148,7 +145,6 @@ function MainApp() {
   const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
   const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
 
-  // ESTADOS DO TUTORIAL DO RAIOZINHO
   const [tutorialStep, setTutorialStep] = useState(-1);
 
   const navegarPara = (view, params = null) => {
@@ -167,7 +163,7 @@ function MainApp() {
        setTutorialStep(nextStep);
        setCurrentView(TUTORIAL_STEPS[nextStep].view);
     } else {
-       setTutorialStep(-1); // Fim do tutorial
+       setTutorialStep(-1);
        localStorage.setItem('evoluti_tutorial_visto', 'sim');
        setCurrentView('dashboard');
     }
@@ -198,7 +194,6 @@ function MainApp() {
              sessionStorage.setItem('evoluti_user', JSON.stringify(userData));
           }
 
-          // Dispara tutorial se for o primeiro login neste dispositivo
           if (!localStorage.getItem('evoluti_tutorial_visto')) {
              setTimeout(() => setTutorialStep(0), 1000);
           }
@@ -241,17 +236,14 @@ function MainApp() {
       const unsubPac = onSnapshot(query(collection(db, "pacientes"), orderBy("nome", "asc")), (snap) => {
         setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
-      
       const unsubAg = onSnapshot(collection(db, "agendamentos"), (snap) => {
         setAgendamentosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
-
       const unsubEx = onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
         const exs = snap.docs.map(d => ({ id: d.id, pacienteId: d.ref.parent.parent.id, ...d.data() }));
         exs.sort((a,b) => new Date(b.dataInclusao || 0) - new Date(a.dataInclusao || 0));
         setExerciciosGlobais(exs);
       });
-
       return () => { unsubPac(); unsubAg(); unsubEx(); };
     }
   }, [user]);
@@ -311,25 +303,18 @@ function MainApp() {
                   <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Aqui está o resumo de hoje.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-blue-600 text-white rounded-[32px] p-8 shadow-xl">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 mb-2">Total de Agendamentos</p>
+                    <div className="bg-[#00A1FF] text-white rounded-[32px] p-8 shadow-xl">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-2">Total de Agendamentos</p>
                         <h3 className="text-5xl font-black">{agendaGeralHoje.length}</h3>
-                        <p className="text-xs font-bold text-blue-100 mt-4">Sessões marcadas para hoje</p>
+                        <p className="text-xs font-bold text-blue-50 mt-4">Sessões marcadas para hoje</p>
                     </div>
                     <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando Atendimento</p>
-                        <h3 className="text-4xl font-black text-slate-800">{sessoesPendentesGeral}</h3>
+                        <h3 className="text-4xl font-black text-[#0F214A]">{sessoesPendentesGeral}</h3>
                     </div>
                     <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sessões Finalizadas</p>
-                        <h3 className="text-4xl font-black text-slate-800">{sessoesRealizadasGeral}</h3>
-                    </div>
-                </div>
-                <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
-                    <h3 className="text-lg font-black text-slate-800 mb-4">Ações Rápidas</h3>
-                    <div className="flex gap-4">
-                        <button onClick={() => navegarPara('agenda')} className="px-6 py-4 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-black transition-colors shadow-lg">Abrir Agenda Global</button>
-                        <button onClick={() => navegarPara('pacientes')} className="px-6 py-4 bg-blue-50 text-blue-700 rounded-2xl font-black text-sm hover:bg-blue-100 transition-colors">Cadastrar Paciente</button>
+                        <h3 className="text-4xl font-black text-[#0F214A]">{sessoesRealizadasGeral}</h3>
                     </div>
                 </div>
             </div>
@@ -344,17 +329,17 @@ function MainApp() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="md:col-span-2 bg-slate-900 rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden">
+                <div className="md:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden">
                     <div className="relative z-10 flex flex-col h-full justify-between">
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2 mb-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4">
                                 <Clock size={14}/> Seu Próximo Paciente
                             </p>
                             {proximoAtendimento ? (
                                 <>
                                     <h2 className="text-4xl md:text-5xl font-black mb-2">{proximoAtendimento.paciente}</h2>
                                     <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                        <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse' : 'bg-blue-600 text-white'}`}>
+                                        <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse' : 'bg-[#00A1FF] text-white'}`}>
                                             {proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}
                                         </span>
                                         <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300">{proximoAtendimento.local}</span>
@@ -371,7 +356,7 @@ function MainApp() {
                             <div className="mt-8">
                                 <button 
                                     onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} 
-                                    className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-black text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-lg w-fit"
+                                    className="bg-[#FFCC00] text-[#0F214A] px-6 py-3 rounded-2xl font-black text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-lg w-fit"
                                 >
                                     Iniciar Prontuário <ArrowRight size={16}/>
                                 </button>
@@ -384,16 +369,16 @@ function MainApp() {
                 <div className="flex flex-col gap-6">
                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> {rotuloMetricas}</p>
-                        <h3 className="text-4xl font-black text-slate-800">{totalMetricas}</h3>
+                        <h3 className="text-4xl font-black text-[#0F214A]">{totalMetricas}</h3>
                         <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
-                            <div className="bg-blue-600 h-full rounded-full transition-all" style={{ width: `${totalMetricas > 0 ? (realizadasMetricas / totalMetricas) * 100 : 0}%` }}></div>
+                            <div className="bg-[#00A1FF] h-full rounded-full transition-all" style={{ width: `${totalMetricas > 0 ? (realizadasMetricas / totalMetricas) * 100 : 0}%` }}></div>
                         </div>
                         <p className="text-xs font-bold text-slate-400 mt-2">{realizadasMetricas} concluídos de {totalMetricas}</p>
                     </div>
 
                     <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
-                        <h3 className="text-4xl font-black text-blue-700">{atrasadasMetricas}</h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
+                        <h3 className="text-4xl font-black text-[#00A1FF]">{atrasadasMetricas}</h3>
                         <p className="text-xs font-bold text-blue-600/70 mt-2">Sessões atrasadas sem assinatura</p>
                     </div>
                 </div>
@@ -401,8 +386,8 @@ function MainApp() {
 
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
                 <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                        <Dumbbell className="text-blue-600"/> Recentes no Plano de Tratamento
+                    <h3 className="text-xl font-black text-[#0F214A] flex items-center gap-2">
+                        <Dumbbell className="text-[#00A1FF]"/> Recentes no Plano de Tratamento
                     </h3>
                 </div>
 
@@ -411,18 +396,18 @@ function MainApp() {
                         {ultimosExercicios.map(ex => {
                             const pac = pacientes.find(p => p.id === ex.pacienteId);
                             return (
-                                <div key={ex.id} onClick={() => navegarPara('pacientes', { pacienteId: ex.pacienteId })} className="bg-slate-50 p-5 rounded-[24px] border border-slate-200 flex flex-col group hover:border-blue-400 transition-colors cursor-pointer shadow-sm hover:shadow-md">
+                                <div key={ex.id} onClick={() => navegarPara('pacientes', { pacienteId: ex.pacienteId })} className="bg-slate-50 p-5 rounded-[24px] border border-slate-200 flex flex-col group hover:border-[#00A1FF] transition-colors cursor-pointer shadow-sm hover:shadow-md">
                                     <div className="flex justify-between items-start mb-3">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 bg-blue-100 px-2 py-1 rounded-lg">{ex.musculo}</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] bg-blue-100 px-2 py-1 rounded-lg">{ex.musculo}</span>
                                         <span className="text-[10px] font-bold text-slate-400">{new Date(ex.dataInclusao).toLocaleDateString()}</span>
                                     </div>
-                                    <h4 className="font-black text-slate-900 text-sm mb-1 leading-tight">{ex.nome}</h4>
+                                    <h4 className="font-black text-[#0F214A] text-sm mb-1 leading-tight">{ex.nome}</h4>
                                     <p className="text-xs font-bold text-slate-500 mb-4">
                                         {ex.series}x {ex.reps} {ex.carga ? <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded ml-1">• {ex.carga}</span> : ''}
                                     </p>
                                     <div className="mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-[10px] font-black uppercase text-slate-500">
                                         <span className="truncate max-w-[130px]" title={pac?.nome}>{pac?.nome || 'Paciente não encontrado'}</span>
-                                        <span className="text-blue-500">{ex.profissional?.split(' ')[0]}</span>
+                                        <span className="text-[#00A1FF]">{ex.profissional?.split(' ')[0]}</span>
                                     </div>
                                 </div>
                             );
@@ -442,24 +427,23 @@ function MainApp() {
   if (!user) {
     return (
       <div className="min-h-screen flex bg-slate-50">
-        <div className="hidden lg:flex flex-col justify-center w-1/2 bg-[#001a41] p-16 text-white relative overflow-hidden">
+        <div className="hidden lg:flex flex-col justify-center w-1/2 bg-[#0F214A] p-16 text-white relative overflow-hidden">
            <div className="relative z-10 max-w-lg">
               <div className="flex items-center gap-3 mb-8">
-                <HeartPulse size={48} className="text-blue-400" />
+                <HeartPulse size={48} className="text-[#00A1FF]" />
                 <span className="text-3xl font-black tracking-tight">EVOLUTI</span>
               </div>
               <h1 className="text-5xl font-black leading-tight mb-6">Gestão Clínica Inteligente.</h1>
               <p className="text-lg text-blue-200 font-medium leading-relaxed">
-                Organize a sua agenda, escreva evoluções guiadas por Inteligência Artificial e controle o fluxo de caixa num único ecrã.
+                Organize a sua agenda, escreva evoluções guiadas por IA e controle o fluxo de caixa com a energia do Choquito ⚡!
               </p>
            </div>
-           <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-blue-600 rounded-full blur-[150px] opacity-20"></div>
-           <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-indigo-500 rounded-full blur-[120px] opacity-20"></div>
+           <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-[#00A1FF] rounded-full blur-[150px] opacity-30"></div>
         </div>
 
         <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative">
-           <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2 text-[#001a41]">
-              <HeartPulse size={28} className="text-blue-600" />
+           <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2 text-[#0F214A]">
+              <HeartPulse size={28} className="text-[#00A1FF]" />
               <span className="text-xl font-black tracking-tight">EVOLUTI</span>
            </div>
 
@@ -473,29 +457,29 @@ function MainApp() {
                    <form onSubmit={realizarLogin} className="space-y-5">
                      <div>
                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">E-mail Profissional</label>
-                       <input name="email" required type="email" placeholder="nome@clinica.com" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-50 font-bold text-slate-800 transition-all shadow-sm" />
+                       <input name="email" required type="email" placeholder="nome@clinica.com" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:ring-4 focus:ring-blue-50 font-bold text-slate-800 transition-all shadow-sm" />
                      </div>
                      <div>
                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Palavra-passe</label>
-                       <input name="senha" required type="password" placeholder="••••••••" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-50 font-bold text-slate-800 transition-all shadow-sm" />
+                       <input name="senha" required type="password" placeholder="••••••••" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:ring-4 focus:ring-blue-50 font-bold text-slate-800 transition-all shadow-sm" />
                      </div>
                      <div className="flex items-center justify-between pt-2">
                        <label className="flex items-center gap-2 cursor-pointer group">
-                         <div className="relative flex items-center justify-center w-5 h-5 rounded border-2 border-slate-300 group-hover:border-blue-500 transition-colors">
+                         <div className="relative flex items-center justify-center w-5 h-5 rounded border-2 border-slate-300 group-hover:border-[#00A1FF] transition-colors">
                            <input type="checkbox" className="opacity-0 absolute w-full h-full cursor-pointer" checked={lembrarMe} onChange={e => setLembrarMe(e.target.checked)} />
-                           {lembrarMe && <CheckCircle2 size={14} className="text-blue-600 absolute pointer-events-none" />}
+                           {lembrarMe && <CheckCircle2 size={14} className="text-[#00A1FF] absolute pointer-events-none" />}
                          </div>
                          <span className="text-sm font-bold text-slate-600 group-hover:text-slate-900 transition-colors">Lembrar-me (30 min)</span>
                        </label>
                        <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1"><Lock size={10}/> Ambiente Seguro</span>
                      </div>
-                     <button disabled={loading} className="w-full bg-[#005ac1] text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all shadow-lg hover:shadow-blue-200 mt-4 flex items-center justify-center">
+                     <button disabled={loading} className="w-full bg-[#00A1FF] text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-600 transition-all shadow-lg hover:shadow-blue-200 mt-4 flex items-center justify-center">
                        {loading ? <Loader2 className="animate-spin" /> : 'Acessar Plataforma'}
                      </button>
                    </form>
                    <div className="mt-10 text-center border-t border-slate-200 pt-6">
                       <p className="text-sm text-slate-500 font-medium">Novo na equipa clínica?</p>
-                      <button onClick={() => setAuthMode('cadastro')} className="mt-2 text-blue-600 font-black hover:text-blue-800 transition-colors">Solicitar Acesso ao Gestor</button>
+                      <button onClick={() => setAuthMode('cadastro')} className="mt-2 text-[#00A1FF] font-black hover:text-blue-800 transition-colors">Solicitar Acesso ao Gestor</button>
                    </div>
                  </>
              ) : (
@@ -506,20 +490,20 @@ function MainApp() {
                      <p className="text-slate-500 font-medium mt-2 text-sm">O seu pedido será revisto pelo Gestor Clínico.</p>
                    </div>
                    <form onSubmit={solicitarCadastro} className="space-y-4">
-                     <input required type="text" placeholder="Nome Completo" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadNome} onChange={e => setCadNome(e.target.value)} />
+                     <input required type="text" placeholder="Nome Completo" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-800 text-sm shadow-sm" value={cadNome} onChange={e => setCadNome(e.target.value)} />
                      <div className="grid grid-cols-2 gap-3">
-                       <select required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadProfissao} onChange={e => setCadProfissao(e.target.value)}>
+                       <select required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-800 text-sm shadow-sm" value={cadProfissao} onChange={e => setCadProfissao(e.target.value)}>
                          <option value="">Profissão...</option>
                          <option value="fisio">Fisioterapeuta</option>
                          <option value="to">Ter. Ocupacional</option>
                          <option value="recepcao">Recepção</option>
                        </select>
-                       <input required type="text" placeholder="Nº de Registro" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadRegistro} onChange={e => setCadRegistro(e.target.value)} />
+                       <input required type="text" placeholder="Nº de Registro" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-800 text-sm shadow-sm" value={cadRegistro} onChange={e => setCadRegistro(e.target.value)} />
                      </div>
-                     <input required type="email" placeholder="E-mail Profissional" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadEmail} onChange={e => setCadEmail(e.target.value)} />
-                     <input required type="password" placeholder="Defina uma Senha" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadSenha} onChange={e => setCadSenha(e.target.value)} />
+                     <input required type="email" placeholder="E-mail Profissional" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-800 text-sm shadow-sm" value={cadEmail} onChange={e => setCadEmail(e.target.value)} />
+                     <input required type="password" placeholder="Defina uma Senha" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-800 text-sm shadow-sm" value={cadSenha} onChange={e => setCadSenha(e.target.value)} />
                      
-                     <button disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black mt-2 hover:bg-black transition-all flex justify-center shadow-lg">
+                     <button disabled={loading} className="w-full bg-[#0F214A] text-white py-4 rounded-xl font-black mt-2 hover:bg-[#00A1FF] transition-all flex justify-center shadow-lg">
                        {loading ? <Loader2 className="animate-spin" /> : 'Enviar Solicitação Segura'}
                      </button>
                    </form>
@@ -531,34 +515,32 @@ function MainApp() {
     );
   }
 
-  // Captura o capítulo atual para o tutorial
   const currentTutorialStep = tutorialStep >= 0 ? TUTORIAL_STEPS[tutorialStep] : null;
   const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
       
-      {/* O COMPONENTE DO TUTORIAL DO RAIOZINHO (ATUALIZADO COM CAPÍTULOS) */}
+      {/* O COMPONENTE DO TUTORIAL DO CHOQUITO */}
       {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
-          <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in-95 duration-300">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+          <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in-95 duration-300 mt-16">
              
-             {/* O Mascote (Placeholder: Raio) - AQUI VAI ENTRAR A SUA IMAGEM */}
-             <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-24 h-24 bg-yellow-400 rounded-full flex items-center justify-center border-4 border-white shadow-lg animate-bounce">
-                <Zap size={48} className="text-white fill-white" />
+             {/* O CHOQUITO! */}
+             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-40 h-40 flex items-center justify-center animate-bounce z-50">
+                <img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain drop-shadow-[0_10px_20px_rgba(0,161,255,0.6)]" />
              </div>
 
-             <div className="mt-10 text-center">
+             <div className="mt-16 text-center">
                 
-                {/* Visualização Hierárquica */}
-                <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner">
-                   <div className={`p-2 rounded-full ${currentChapter.color} text-white`}><ListChecks size={14}/></div>
-                   <span className="text-[11px] font-black uppercase tracking-widest text-slate-700">
+                <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner w-fit mx-auto">
+                   <div className={`p-2 rounded-full ${currentChapter.color} ${currentChapter.textColor}`}><ListChecks size={14}/></div>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 px-2">
                      {currentChapter.title}
                    </span>
                 </div>
 
-                <h3 className="text-2xl font-black text-slate-900 mb-4">{currentTutorialStep.titulo}</h3>
+                <h3 className="text-2xl font-black text-[#0F214A] mb-4 leading-tight">{currentTutorialStep.titulo}</h3>
                 <p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">
                   {currentTutorialStep.texto}
                 </p>
@@ -566,10 +548,10 @@ function MainApp() {
                 <div className="flex gap-3 pt-2 border-t border-slate-100">
                   {tutorialStep > 0 && (
                     <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">
-                      Sair da Tour
+                      Sair
                     </button>
                   )}
-                  <button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} text-white py-3 rounded-xl font-black hover:opacity-90 transition-all shadow-lg text-sm`}>
+                  <button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} ${currentChapter.textColor} py-3 rounded-xl font-black hover:scale-105 transition-all shadow-lg text-sm`}>
                     {currentTutorialStep.botao}
                   </button>
                 </div>
@@ -579,13 +561,13 @@ function MainApp() {
       )}
 
       <aside onMouseEnter={() => setIsSidebarOpen(true)} onMouseLeave={() => setIsSidebarOpen(false)} className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'}`}>
-        <div className="p-6 flex justify-center text-[#005ac1] shrink-0">
+        <div className="p-6 flex justify-center text-[#00A1FF] shrink-0">
           <HeartPulse size={32} className="animate-pulse" />
         </div>
         <nav className="flex-1 px-2 space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button key={item.id} onClick={() => navegarPara(item.id)} className={`w-full flex flex-col items-center justify-center p-3 rounded-2xl transition-all gap-1 ${currentView === item.id ? 'bg-[#d8e2ff] text-[#001a41]' : 'text-slate-500 hover:bg-[#ece7ed]'}`}>
-              <item.icon size={currentView === item.id ? 28 : 24} className={currentView === item.id ? 'text-[#005ac1]' : ''} />
+            <button key={item.id} onClick={() => navegarPara(item.id)} className={`w-full flex flex-col items-center justify-center p-3 rounded-2xl transition-all gap-1 ${currentView === item.id ? 'bg-[#e5f5ff] text-[#00A1FF]' : 'text-slate-500 hover:bg-[#ece7ed]'}`}>
+              <item.icon size={currentView === item.id ? 28 : 24} className={currentView === item.id ? 'text-[#00A1FF]' : ''} />
               <span className={`text-[10px] font-black uppercase tracking-tighter transition-opacity duration-300 ${!isSidebarOpen ? 'opacity-0 h-0' : 'opacity-100'}`}>{item.label}</span>
             </button>
           ))}
@@ -596,20 +578,21 @@ function MainApp() {
         </button>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
+      <main className="flex-1 flex flex-col min-w-0">
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40">
-           <span className="font-black text-blue-600 uppercase tracking-tighter md:hidden">EVOLUTI</span>
+           <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-3">
               
-              <button onClick={iniciarTutorial} className="p-2 text-yellow-500 hover:bg-yellow-50 rounded-full transition-colors mr-2 hidden sm:block" title="Como funciona?">
-                 <Zap size={20} className="fill-yellow-500" />
+              <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors mr-2 hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Como funciona?">
+                 <Zap size={18} className="fill-[#FFCC00]" />
+                 <span className="text-[10px] font-black text-slate-700 uppercase">Guia</span>
               </button>
 
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-black leading-none">{user?.name || user?.nome || 'Equipe'}</p>
-                <p className="text-[9px] text-blue-500 font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p>
+                <p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p>
+                <p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
+              <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
               
               <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:text-red-600 bg-red-50 rounded-full ml-1" title="Sair da Conta">
                  <LogOut size={18}/>
@@ -617,8 +600,8 @@ function MainApp() {
            </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-           <div className="max-w-[1600px] mx-auto h-full">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar">
+           <div className="max-w-[1600px] mx-auto min-h-full">
               {currentView === 'dashboard' && renderDashboard()}
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} />}
               {currentView === 'pacientes' && <Pacientes pacientes={pacientes} hasAccess={hasAccess} user={user} navParams={navParams} />}
@@ -631,8 +614,8 @@ function MainApp() {
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-200 flex justify-around items-center h-20 px-2 z-[60] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
          {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-blue-600 scale-110' : 'text-slate-400'}`}>
-              <div className={`p-2 rounded-xl transition-all ${currentView === item.id ? 'bg-blue-50' : ''}`}><item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} /></div>
+            <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-[#00A1FF] scale-110' : 'text-slate-400'}`}>
+              <div className={`p-2 rounded-xl transition-all ${currentView === item.id ? 'bg-[#e5f5ff]' : ''}`}><item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} /></div>
               <span className="text-[10px] font-bold">{item.label}</span>
             </button>
          ))}
