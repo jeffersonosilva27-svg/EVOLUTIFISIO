@@ -515,40 +515,28 @@ function MainApp() {
   const currentTutorialStep = tutorialStep >= 0 ? TUTORIAL_STEPS[tutorialStep] : null;
   const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
 
+  // CORREÇÃO CRÍTICA AQUI: fixed inset-0 tranca o ecrã, e overflow-auto cria as barras de rolagem
   return (
-    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
+    <div className="fixed inset-0 flex flex-col md:flex-row overflow-hidden bg-[#fdfbff]">
       
       {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in-95 duration-300 mt-16">
-             
              <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-40 h-40 flex items-center justify-center animate-bounce z-50">
                 <img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain drop-shadow-[0_10px_20px_rgba(0,161,255,0.6)]" />
              </div>
-
              <div className="mt-16 text-center">
-                
                 <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner w-fit mx-auto">
                    <div className={`p-2 rounded-full ${currentChapter.color} ${currentChapter.textColor}`}><ListChecks size={14}/></div>
-                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 px-2">
-                     {currentChapter.title}
-                   </span>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 px-2">{currentChapter.title}</span>
                 </div>
-
                 <h3 className="text-2xl font-black text-[#0F214A] mb-4 leading-tight">{currentTutorialStep.titulo}</h3>
-                <p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">
-                  {currentTutorialStep.texto}
-                </p>
-                
+                <p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">{currentTutorialStep.texto}</p>
                 <div className="flex gap-3 pt-2 border-t border-slate-100">
                   {tutorialStep > 0 && (
-                    <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">
-                      Sair
-                    </button>
+                    <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">Sair</button>
                   )}
-                  <button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} ${currentChapter.textColor} py-3 rounded-xl font-black hover:scale-105 transition-all shadow-lg text-sm`}>
-                    {currentTutorialStep.botao}
-                  </button>
+                  <button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} ${currentChapter.textColor} py-3 rounded-xl font-black hover:scale-105 transition-all shadow-lg text-sm`}>{currentTutorialStep.botao}</button>
                 </div>
              </div>
           </div>
@@ -573,29 +561,27 @@ function MainApp() {
         </button>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40">
+      <main className="flex-1 flex flex-col min-w-0 h-full">
+        <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 z-40">
            <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-3">
-              
               <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors mr-2 hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Como funciona?">
                  <Zap size={18} className="fill-[#FFCC00]" />
                  <span className="text-[10px] font-black text-slate-700 uppercase">Guia</span>
               </button>
-
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p>
                 <p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p>
               </div>
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
-              
               <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:text-red-600 bg-red-50 rounded-full ml-1" title="Sair da Conta">
                  <LogOut size={18}/>
               </button>
            </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 custom-scrollbar">
+        {/* CORREÇÃO AQUI: overflow-auto cria as barras de rolagem universal e WebkitOverflow garante o touch no mobile */}
+        <div className="flex-1 overflow-auto p-4 md:p-8 pb-32 custom-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
            <div className="max-w-[1600px] mx-auto min-h-full">
               {currentView === 'dashboard' && renderDashboard()}
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} />}
