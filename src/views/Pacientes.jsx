@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
-  Trash2, Edit3, DollarSign, Sparkles, Download, 
+  Trash2, Edit3, DollarSign, Sparkles, Download, ChevronRight, MessageCircle,
   TrendingDown, History, Info, Loader2, FileText, CalendarClock, Dumbbell, Target, ShieldAlert
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { realizarAnaliseIAHistorico, transcreverExameIA } from '../services/geminiService';
 
-// ADICIONADO: 'Respiratório / TMI' para o Treinamento Muscular Inspiratório
 const GRUPOS_MUSCULARES = [
   'Cervical', 'Ombros / Manguito', 'Dorsal / Escápulas', 'Peitoral', 
   'Core / Abdômen', 'Lombar', 'Pelve / Quadril', 'Coxas / Isquiotibiais', 
@@ -24,8 +23,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   
   const [evolucoes, setEvolucoes] = useState([]);
   const [novoSoap, setNovoSoap] = useState('');
-  
-  // CORREÇÃO: O EVA agora começa obrigatoriamente no Zero!
   const [metricaPain, setMetricaPain] = useState(0); 
   const [editandoEvolucaoId, setEditandoEvolucaoId] = useState(null);
 
@@ -142,12 +139,10 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
-  // NOVA FUNÇÃO: Apagar Evolução com Segurança
   const apagarEvolucao = async (id) => {
     if(window.confirm("Tem a certeza que deseja apagar esta evolução de forma permanente? O seu nome ficará no registo do sistema.")) {
-        try {
-            await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", id));
-        } catch (e) { alert("Erro ao apagar evolução."); }
+        try { await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", id)); } 
+        catch (e) { alert("Erro ao apagar evolução."); }
     }
   };
 
@@ -155,25 +150,14 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     if (!novoSoap) return alert("Escreva algo antes de salvar.");
     try {
       if (editandoEvolucaoId) {
-        await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), { 
-            texto: novoSoap, 
-            metricaPain, 
-            dataEdicao: new Date().toISOString() 
-        });
+        await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), { texto: novoSoap, metricaPain, dataEdicao: new Date().toISOString() });
         alert("Evolução atualizada com sucesso!");
       } else {
-        // SEGURANÇA: Agora guarda o ID do profissional para garantir que só ele edita no futuro
-        await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), { 
-            texto: novoSoap, 
-            data: new Date().toISOString(), 
-            profissional: user?.name || user?.nome || 'Equipe', 
-            profissionalId: user?.id, 
-            metricaPain 
-        });
+        await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), { texto: novoSoap, data: new Date().toISOString(), profissional: user?.name || user?.nome || 'Equipe', profissionalId: user?.id, metricaPain });
         if (navParams?.atualizarStatusAgendamento) await updateDoc(doc(db, "agendamentos", navParams.atualizarStatusAgendamento), { status: 'realizado' });
         alert("Evolução assinada digitalmente com sucesso!");
       }
-      setNovoSoap(''); setEditandoEvolucaoId(null); setMetricaPain(0); // Volta ao 0 após salvar
+      setNovoSoap(''); setEditandoEvolucaoId(null); setMetricaPain(0);
     } catch (e) { alert("Erro ao salvar evolução."); }
   };
 
@@ -305,7 +289,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                
                <div className="space-y-4">
                   {evolucoes.map(evo => {
-                    // BLINDAGEM DE SEGURANÇA: Só o autor edita ou apaga a evolução
                     const nomeUserLogado = user?.name || user?.nome || '';
                     const isOwner = evo.profissionalId === user?.id || (!evo.profissionalId && evo.profissional === nomeUserLogado);
 
@@ -325,7 +308,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                             </div>
                             <div className="flex items-center gap-4">
                             
-                            {/* BOTÕES RESTRITOS APENAS AO AUTOR DA EVOLUÇÃO */}
                             {isOwner ? (
                                 <div className="flex items-center gap-2 mr-2">
                                     <button onClick={() => iniciarEdicaoEvolucao(evo)} className="text-[#00A1FF] hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg transition-colors"><Edit3 size={12}/> Editar</button>
@@ -363,12 +345,10 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                            </select>
                          </div>
                          <div className="md:col-span-2">
-                           {/* PLACEHOLDER ATUALIZADO PARA TMI */}
                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Exercício / Aparelho / TMI</label>
                            <input required type="text" placeholder="Ex: Supino ou PowerBreathe" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.nome} onChange={e => setNovoExercicio({...novoExercicio, nome: e.target.value})}/>
                          </div>
                          <div className="md:col-span-1">
-                           {/* LABEL E PLACEHOLDER ATUALIZADOS PARA CMH2O */}
                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Carga (kg/cor/cmH2O)</label>
                            <input type="text" placeholder="Ex: 10kg, Azul ou 30 cmH2O" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.carga} onChange={e => setNovoExercicio({...novoExercicio, carga: e.target.value})}/>
                          </div>
@@ -523,6 +503,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     );
   }
 
+  // ======================================================================
+  // O NOVO LAYOUT DA BASE DE PACIENTES: CARDS COM CONTATO DIRETO WHATSAPP
+  // ======================================================================
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex justify-between items-end">
@@ -540,37 +523,49 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
         <input placeholder="Procurar paciente pelo nome..." className="flex-1 outline-none text-slate-700 bg-transparent font-bold" value={termoBusca} onChange={e => setTermoBusca(e.target.value)} />
       </div>
 
-      <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-            <tr>
-              <th className="p-6">Identificação do Paciente</th>
-              <th className="p-6">Status / Contato</th>
-              <th className="p-6 text-right">Acesso</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtrados.map(p => (
-              <tr key={p.id} className="hover:bg-blue-50/50 cursor-pointer transition-colors group" onClick={() => setPacienteSelecionado(p)}>
-                <td className="p-6">
-                  <div className="font-black text-[#0F214A] text-lg">{p.nome}</div>
-                  <div className="text-xs text-slate-500 font-bold uppercase mt-1 tracking-widest">CPF: {p.cpf}</div>
-                </td>
-                <td className="p-6">
-                   <div className="text-sm text-slate-600 font-medium flex items-center gap-2">
-                     <Smartphone size={14} className="text-slate-400"/> {p.whatsapp}
+      {/* A GRID DE CARTÕES DE PACIENTES */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filtrados.map(p => {
+           // Formata o número para o link do WhatsApp retirando tudo o que não é número
+           const linkWhatsApp = `https://wa.me/${(p.whatsapp || '').replace(/\D/g, '')}`;
+
+           return (
+             <div key={p.id} onClick={() => setPacienteSelecionado(p)} className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm hover:border-[#00A1FF] hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
+                <div>
+                   <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1 pr-4">
+                        <h3 className="font-black text-[#0F214A] text-lg leading-tight group-hover:text-[#00A1FF] transition-colors">{p.nome}</h3>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">CPF: {p.cpf}</p>
+                      </div>
+                      <div className="w-10 h-10 shrink-0 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-[#00A1FF] transition-colors">
+                        <ChevronRight className="text-[#00A1FF] group-hover:text-white" size={20}/>
+                      </div>
                    </div>
-                </td>
-                <td className="p-6 text-right">
-                   <div className="inline-flex items-center justify-center w-10 h-10 bg-white rounded-xl border border-slate-200 group-hover:border-[#00A1FF] group-hover:bg-blue-50 transition-all shadow-sm">
-                      <ChevronLeft className="rotate-180 text-[#00A1FF]" size={18}/>
-                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+                
+                {/* BOTÃO DO WHATSAPP DENTRO DO CARD */}
+                <div className="pt-4 border-t border-slate-100 mt-2">
+                   <a 
+                      href={linkWhatsApp} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      onClick={(e) => e.stopPropagation()} // Impede que o clique no link abra a ficha do paciente
+                      className="flex items-center justify-center gap-2 bg-green-50 text-green-600 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-green-100 transition-colors w-full border border-green-100"
+                   >
+                     <MessageCircle size={16}/> Enviar Mensagem
+                   </a>
+                </div>
+             </div>
+           );
+        })}
       </div>
+      
+      {filtrados.length === 0 && (
+         <div className="text-center py-16 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+            <Users size={48} className="mx-auto text-slate-300 mb-4"/>
+            <p className="font-bold text-slate-500">Nenhum paciente encontrado com esse nome.</p>
+         </div>
+      )}
 
       {mostrarForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">

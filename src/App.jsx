@@ -2,7 +2,7 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap, MessageSquareShare
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap, MessageSquareShare, Package
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -13,6 +13,7 @@ import Pacientes from './views/Pacientes';
 import Financeiro from './views/Financeiro';
 import Avaliacoes from './views/Avaliacoes';
 import Equipe from './views/Equipe';
+import Estoque from './views/Estoque'; // NOVA GUIA
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -49,18 +50,18 @@ const TUTORIAL_CHAPTERS = [
   { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
   { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-[#00A1FF]', textColor: 'text-white' },
   { id: 'fisio', title: 'Fase 2: Ferramentas do Fisio', color: 'bg-[#0F214A]', textColor: 'text-white' },
-  { id: 'money', title: 'Fase 3: Financeiro', color: 'bg-green-500', textColor: 'text-white' },
+  { id: 'money', title: 'Fase 3: Financeiro e Estoque', color: 'bg-green-500', textColor: 'text-white' },
   { id: 'end', title: 'Tudo Pronto!', color: 'bg-[#00A1FF]', textColor: 'text-white' }
 ];
 
 const TUTORIAL_STEPS = [
-  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Comigo a energia nunca acaba! Vamos fazer uma tour rápida para você aprender a usar tudo sem esforço.", view: 'dashboard', botao: "Começar Tour Guiada" },
-  { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa de assinar hoje.", view: 'dashboard', botao: "Entendi" },
-  { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes. O algoritmo ativará a 'Dupla Janela' se houver sobreposição.", view: 'agenda', botao: "Ir para Clínico" },
-  { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "Clique num paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorizar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
-  { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares.", view: 'pacientes', botao: "Conhecer o Caixa" },
-  { chapterId: 'money', titulo: "Controlo Financeiro", texto: "Sempre que uma sessão é marcada como 'Realizada', o valor cai aqui automaticamente.", view: 'financeiro', botao: "Finalizar Tour" },
-  { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "Você concluiu a tour! Se precisar de mim novamente, clique no ícone do raio azul lá em cima!", view: 'dashboard', botao: "Começar a Usar" }
+  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Comigo a energia nunca acaba! Vamos fazer um tour rápido para você aprender a usar tudo sem esforço.", view: 'dashboard', botao: "Começar Tour Guiada" },
+  { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa assinar hoje. Mantenha os seus olhos sempre aqui!", view: 'dashboard', botao: "Entendi" },
+  { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes. O algoritmo ativará a 'Dupla Janela' se houver sobreposição de horários.", view: 'agenda', botao: "Ir para Clínico" },
+  { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
+  { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares e TMI.", view: 'pacientes', botao: "Conhecer o Caixa" },
+  { chapterId: 'money', titulo: "Fluxo de Caixa e Estoque", texto: "Além do financeiro automático, agora você controla materiais na aba Estoque. O sistema avisa quando algo estiver acabando!", view: 'estoque', botao: "Finalizar Tour" },
+  { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "Você concluiu o tour! O sistema está pronto para receber toda a sua energia. Se precisar de mim novamente, clique no ícone do raio azul lá em cima!", view: 'dashboard', botao: "Começar a Usar Agora" }
 ];
 
 function MainApp() {
@@ -125,7 +126,7 @@ function MainApp() {
           else { sessionStorage.setItem('evoluti_user', JSON.stringify(userData)); }
           if (!localStorage.getItem('evoluti_tutorial_visto')) { setTimeout(() => setTutorialStep(0), 1000); }
         } else { alert("Senha incorreta."); }
-      } else { alert("Utilizador não encontrado."); }
+      } else { alert("Usuário não encontrado."); }
     } catch (error) { alert("Erro de conexão."); }
     setLoading(false);
   };
@@ -173,6 +174,7 @@ function MainApp() {
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Activity, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
+    { id: 'estoque', icon: Package, label: 'Estoque', roles: ['any'] }, // MENU ADICIONADO
     { id: 'financeiro', icon: DollarSign, label: 'Caixa', roles: ['gestor_clinico', 'admin_fin'] },
     { id: 'equipe', icon: Settings, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
@@ -180,19 +182,15 @@ function MainApp() {
   const renderDashboard = () => {
     const hojeIso = obterDataLocalISO(new Date());
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
-
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
     const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
     const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente');
     const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
     const proximoEstaAtrasado = proximoAtendimento ? getMinutos(proximoAtendimento.hora) < minutosAtuais : false;
-
     const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
-
     const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
-
     const planoProximoPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
     const primeiroNome = (user?.name || user?.nome || 'Equipe').split(' ')[0];
 
@@ -202,23 +200,17 @@ function MainApp() {
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel Clínico</h1>
               <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das suas atividades hoje.</p>
             </div>
-
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4">
-                            <Clock size={14}/> Seu Próximo Paciente
-                        </p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4"><Clock size={14}/> Seu Próximo Paciente</p>
                         {proximoAtendimento ? (
                             <>
                                 <h2 className="text-4xl md:text-5xl font-black mb-2">{proximoAtendimento.paciente}</h2>
                                 <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                    <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse' : 'bg-[#00A1FF] text-white'}`}>
-                                        {proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}
-                                    </span>
+                                    <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse' : 'bg-[#00A1FF] text-white'}`}>{proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}</span>
                                     <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300">{proximoAtendimento.local}</span>
                                 </p>
-                                
                                 {planoProximoPaciente.length > 0 && (
                                     <div className="mt-6 bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-md max-w-lg">
                                         <p className="text-[10px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1"><Dumbbell size={12}/> Exercícios Prescritos</p>
@@ -234,32 +226,23 @@ function MainApp() {
                                 )}
                             </>
                         ) : (
-                            <div>
-                                <h2 className="text-3xl font-black mb-2 text-slate-400">Nenhum paciente na fila.</h2>
-                                <p className="text-slate-500 font-medium">Você concluiu todos os seus atendimentos de hoje!</p>
-                            </div>
+                            <div><h2 className="text-3xl font-black mb-2 text-slate-400">Nenhum paciente na fila.</h2><p className="text-slate-500 font-medium">Você concluiu todos os seus atendimentos de hoje!</p></div>
                         )}
                     </div>
                     {proximoAtendimento && (
                         <div className="relative z-10 mt-8">
-                            <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="bg-[#FFCC00] text-[#0F214A] px-6 py-3 rounded-2xl font-black text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-lg w-fit">
-                                Iniciar Prontuário <ArrowRight size={16}/>
-                            </button>
+                            <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="bg-[#FFCC00] text-[#0F214A] px-6 py-3 rounded-2xl font-black text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-lg w-fit">Iniciar Prontuário <ArrowRight size={16}/></button>
                         </div>
                     )}
                     <Activity className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
                 </div>
-
                 <div className="flex flex-col gap-6">
                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> Suas Sessões Hoje</p>
                         <h3 className="text-4xl font-black text-[#0F214A]">{minhaAgendaHoje.length}</h3>
-                        <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
-                            <div className="bg-[#00A1FF] h-full rounded-full transition-all" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div>
-                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
                         <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
                     </div>
-
                     <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center">
                         <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Suas Evoluções Pendentes</p>
                         <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
@@ -267,23 +250,13 @@ function MainApp() {
                     </div>
                 </div>
             </div>
-
             {user.role === 'gestor_clinico' && (
                 <div className="mt-8 pt-8 border-t border-slate-200">
                     <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica (Gestor)</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-slate-900 text-white rounded-[24px] p-6 shadow-md">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p>
-                            <h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p>
-                            <h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados (Clínica)</p>
-                            <h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3>
-                        </div>
+                        <div className="bg-slate-900 text-white rounded-[24px] p-6 shadow-md"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
+                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
+                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
                     </div>
                 </div>
             )}
@@ -291,70 +264,51 @@ function MainApp() {
     );
   };
 
-  // ====================================================================
-  // TELA DE LOGIN RESTAURADA (Layout Antigo e Sólido)
-  // ====================================================================
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-[#fdfbff]">
-        <div className="max-w-md w-full bg-white border border-slate-200 overflow-hidden shadow-2xl rounded-2xl relative">
-          
-          {authMode === 'login' ? (
-              <>
-                <div className="bg-[#001a41] p-10 text-center text-white relative">
-                  <div className="absolute top-4 right-4 animate-bounce">
-                    <img src="/choquito.jpg" alt="Choquito" className="w-12 h-12 rounded-full border-2 border-[#FFCC00] shadow-[0_0_10px_#00A1FF]" />
-                  </div>
-                  <HeartPulse size={48} className="text-[#00A1FF] mx-auto mb-4 animate-pulse" />
-                  <h1 className="text-3xl font-black uppercase tracking-tight">EVOLUTI FISIO</h1>
-                </div>
-                <form onSubmit={realizarLogin} className="p-8 space-y-5">
-                  <input name="email" required type="email" placeholder="E-mail" className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#00A1FF] outline-none font-bold text-slate-800" />
-                  <input name="senha" required type="password" placeholder="Senha" className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-[#00A1FF] outline-none font-bold text-slate-800" />
-                  
-                  <div className="flex items-center justify-between pt-2 px-2">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <div className="relative flex items-center justify-center w-5 h-5 rounded border-2 border-slate-300 group-hover:border-[#00A1FF] transition-colors">
-                        <input type="checkbox" className="opacity-0 absolute w-full h-full cursor-pointer" checked={lembrarMe} onChange={e => setLembrarMe(e.target.checked)} />
-                        {lembrarMe && <CheckCircle2 size={14} className="text-[#00A1FF] absolute pointer-events-none" />}
-                      </div>
-                      <span className="text-sm font-bold text-slate-600 group-hover:text-slate-900 transition-colors">Lembrar-me (30 min)</span>
-                    </label>
-                  </div>
-
-                  <button disabled={loading} className="w-full bg-[#0F214A] text-white py-4 rounded-xl font-black text-lg hover:bg-[#00A1FF] transition-all shadow-lg flex justify-center items-center">
-                    {loading ? <Loader2 className="animate-spin" /> : 'Acessar Plataforma'}
-                  </button>
-                </form>
-                <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
-                  <p className="text-sm text-slate-500 font-medium">Equipa clínica?</p>
-                  <button onClick={() => setAuthMode('cadastro')} className="text-[#00A1FF] font-black hover:underline mt-1">Solicitar Acesso Seguro</button>
-                </div>
-              </>
-          ) : (
-              <>
-                <div className="bg-slate-50 p-8 text-center border-b border-slate-200">
-                  <button onClick={() => setAuthMode('login')} className="absolute top-6 left-6 text-slate-400 hover:text-slate-700 flex items-center gap-1 font-bold text-sm"><ChevronLeft size={16}/> Voltar</button>
-                  <h2 className="text-2xl font-black text-[#0F214A] mt-6">Novo Registo</h2>
-                  <p className="text-slate-500 text-sm mt-2 font-medium">O seu acesso será revisto pelo gestor.</p>
-                </div>
-                <form onSubmit={solicitarCadastro} className="p-8 space-y-4 bg-white">
-                  <input required type="text" placeholder="Nome Completo" className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-xl focus:border-[#00A1FF] font-bold text-sm outline-none" value={cadNome} onChange={e => setCadNome(e.target.value)} />
-                  <div className="grid grid-cols-2 gap-3">
-                    <select required className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-xl focus:border-[#00A1FF] font-bold text-sm outline-none" value={cadProfissao} onChange={e => setCadProfissao(e.target.value)}>
-                      <option value="">Profissão...</option><option value="fisio">Fisioterapeuta</option><option value="to">Ter. Ocupacional</option><option value="recepcao">Recepção</option>
-                    </select>
-                    <input required type="text" placeholder="Nº Registo" className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-xl focus:border-[#00A1FF] font-bold text-sm outline-none" value={cadRegistro} onChange={e => setCadRegistro(e.target.value)} />
-                  </div>
-                  <input required type="email" placeholder="E-mail Profissional" className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-xl focus:border-[#00A1FF] font-bold text-sm outline-none" value={cadEmail} onChange={e => setCadEmail(e.target.value)} />
-                  <input required type="password" placeholder="Defina uma Senha" className="w-full p-4 bg-slate-50 border-2 border-transparent rounded-xl focus:border-[#00A1FF] font-bold text-sm outline-none" value={cadSenha} onChange={e => setCadSenha(e.target.value)} />
-                  <button disabled={loading} className="w-full bg-[#00A1FF] text-white py-4 rounded-xl font-black mt-2 hover:bg-[#0F214A] transition-all flex justify-center shadow-lg">
-                    {loading ? <Loader2 className="animate-spin" /> : 'Enviar Solicitação Segura'}
-                  </button>
-                </form>
-              </>
-          )}
-
+      <div className="min-h-screen flex bg-white font-sans">
+        <div className="hidden lg:flex flex-col justify-center w-1/2 bg-[#0F214A] p-16 text-white relative overflow-hidden">
+           <div className="relative z-10 max-w-lg">
+              <div className="flex items-center gap-3 mb-8"><HeartPulse size={48} className="text-[#00A1FF]" /><span className="text-3xl font-black tracking-tight">EVOLUTI</span></div>
+              <h1 className="text-5xl font-black leading-tight mb-6">Gestão Clínica Inteligente.</h1>
+              <p className="text-lg text-blue-200 font-medium leading-relaxed">Organize a sua agenda, escreva evoluções guiadas por IA e controle o fluxo de caixa com a energia do Choquito ⚡!</p>
+           </div>
+           <div className="absolute top-1/4 right-10 w-48 h-48 opacity-90 hover:opacity-100 hover:scale-105 transition-all duration-500 z-20"><img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain rounded-full shadow-[0_0_40px_rgba(0,161,255,0.4)] border-4 border-[#00A1FF]" /></div>
+           <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-[#00A1FF] rounded-full blur-[150px] opacity-20"></div>
+           <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#FFCC00] rounded-full blur-[200px] opacity-10"></div>
+        </div>
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-20 relative bg-white">
+           <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2 text-[#0F214A]"><HeartPulse size={28} className="text-[#00A1FF]" /><span className="text-xl font-black tracking-tight">EVOLUTI</span></div>
+           <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700 mt-12 lg:mt-0">
+             {authMode === 'login' ? (
+                 <>
+                   <div className="mb-10 text-center lg:text-left"><h2 className="text-3xl font-black text-slate-900">Bem-vindo de volta!</h2><p className="text-slate-500 font-medium mt-2">Insira as suas credenciais para acessar o sistema.</p></div>
+                   <form onSubmit={realizarLogin} className="space-y-5">
+                     <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">E-mail Profissional</label><input name="email" required type="email" placeholder="nome@clinica.com" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 transition-all shadow-sm" /></div>
+                     <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Senha</label><input name="senha" required type="password" placeholder="••••••••" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 transition-all shadow-sm" /></div>
+                     <div className="flex items-center justify-between pt-2">
+                       <label className="flex items-center gap-2 cursor-pointer group"><div className="relative flex items-center justify-center w-5 h-5 rounded border-2 border-slate-300 group-hover:border-[#00A1FF] transition-colors"><input type="checkbox" className="opacity-0 absolute w-full h-full cursor-pointer" checked={lembrarMe} onChange={e => setLembrarMe(e.target.checked)} />{lembrarMe && <CheckCircle2 size={14} className="text-[#00A1FF] absolute pointer-events-none" />}</div><span className="text-sm font-bold text-slate-600 group-hover:text-slate-900 transition-colors">Lembrar-me (30 min)</span></label>
+                       <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1"><Lock size={10}/> Ambiente Seguro</span>
+                     </div>
+                     <button disabled={loading} className="w-full bg-[#0F214A] text-white py-4 rounded-2xl font-black text-lg hover:bg-[#00A1FF] transition-all shadow-lg hover:shadow-blue-200 mt-4 flex items-center justify-center">{loading ? <Loader2 className="animate-spin" /> : 'Acessar Plataforma'}</button>
+                   </form>
+                   <div className="mt-10 text-center border-t border-slate-100 pt-6"><p className="text-sm text-slate-500 font-medium">Novo na equipe clínica?</p><button onClick={() => setAuthMode('cadastro')} className="mt-2 text-[#00A1FF] font-black hover:text-blue-800 transition-colors">Solicitar Acesso ao Gestor</button></div>
+                 </>
+             ) : (
+                 <>
+                   <div className="mb-8 text-center lg:text-left"><button onClick={() => setAuthMode('login')} className="mb-4 text-sm font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1 lg:justify-start justify-center mx-auto lg:mx-0 transition-colors"><ChevronLeft size={16}/> Voltar ao Login</button><h2 className="text-3xl font-black text-slate-900">Solicitar Acesso</h2><p className="text-slate-500 font-medium mt-2 text-sm">O seu pedido será revisado pelo Gestor Clínico.</p></div>
+                   <form onSubmit={solicitarCadastro} className="space-y-4">
+                     <input required type="text" placeholder="Nome Completo" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 text-sm shadow-sm transition-all" value={cadNome} onChange={e => setCadNome(e.target.value)} />
+                     <div className="grid grid-cols-2 gap-3">
+                       <select required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 text-sm shadow-sm transition-all" value={cadProfissao} onChange={e => setCadProfissao(e.target.value)}><option value="">Profissão...</option><option value="fisio">Fisioterapeuta</option><option value="to">Ter. Ocupacional</option><option value="recepcao">Recepção</option></select>
+                       <input required type="text" placeholder="Nº de Registro" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 text-sm shadow-sm transition-all" value={cadRegistro} onChange={e => setCadRegistro(e.target.value)} />
+                     </div>
+                     <input required type="email" placeholder="E-mail Profissional" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 text-sm shadow-sm transition-all" value={cadEmail} onChange={e => setCadEmail(e.target.value)} /><input required type="password" placeholder="Defina uma Senha" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 text-sm shadow-sm transition-all" value={cadSenha} onChange={e => setCadSenha(e.target.value)} />
+                     <button disabled={loading} className="w-full bg-[#0F214A] text-white py-4 rounded-xl font-black mt-4 hover:bg-[#00A1FF] transition-all flex justify-center shadow-lg">{loading ? <Loader2 className="animate-spin" /> : 'Enviar Solicitação Segura'}</button>
+                   </form>
+                 </>
+             )}
+           </div>
         </div>
       </div>
     );
@@ -365,29 +319,18 @@ function MainApp() {
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
-      
       {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative mt-16 animate-in zoom-in-95 duration-300">
-             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-32 h-32 flex items-center justify-center animate-bounce z-50">
-                <img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain drop-shadow-xl rounded-full border-4 border-white" />
-             </div>
+             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-32 h-32 flex items-center justify-center animate-bounce z-50"><img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain drop-shadow-xl rounded-full border-4 border-white" /></div>
              <div className="mt-12 text-center">
-                <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner w-fit mx-auto">
-                   <div className={`p-2 rounded-full ${currentChapter.color} ${currentChapter.textColor}`}><ListChecks size={14}/></div>
-                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-700 px-2">{currentChapter.title}</span>
-                </div>
-                <h3 className="text-2xl font-black text-[#0F214A] mb-4 leading-tight">{currentTutorialStep.titulo}</h3>
-                <p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">{currentTutorialStep.texto}</p>
-                <div className="flex gap-3 pt-2 border-t border-slate-100">
-                  {tutorialStep > 0 && <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">Sair</button>}
-                  <button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} ${currentChapter.textColor} py-3 rounded-xl font-black hover:scale-105 transition-all shadow-lg text-sm`}>{currentTutorialStep.botao}</button>
-                </div>
+                <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner w-fit mx-auto"><div className={`p-2 rounded-full ${currentChapter.color} ${currentChapter.textColor}`}><ListChecks size={14}/></div><span className="text-[10px] font-black uppercase tracking-widest text-slate-700 px-2">{currentChapter.title}</span></div>
+                <h3 className="text-2xl font-black text-[#0F214A] mb-4 leading-tight">{currentTutorialStep.titulo}</h3><p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">{currentTutorialStep.texto}</p>
+                <div className="flex gap-3 pt-2 border-t border-slate-100">{tutorialStep > 0 && <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">Sair</button>}<button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} ${currentChapter.textColor} py-3 rounded-xl font-black hover:scale-105 transition-all shadow-lg text-sm`}>{currentTutorialStep.botao}</button></div>
              </div>
           </div>
         </div>
       )}
-
       <aside onMouseEnter={() => setIsSidebarOpen(true)} onMouseLeave={() => setIsSidebarOpen(false)} className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'} print:hidden`}>
         <div className="p-6 flex justify-center text-[#00A1FF] shrink-0"><HeartPulse size={32} className="animate-pulse" /></div>
         <nav className="flex-1 px-2 space-y-4 mt-4 overflow-y-auto custom-scrollbar">
@@ -400,48 +343,31 @@ function MainApp() {
         </nav>
         <button onClick={fazerLogout} className="p-6 text-red-400 hover:text-red-600 flex flex-col items-center gap-1"><LogOut size={20}/></button>
       </aside>
-
       <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0 h-full overflow-y-auto print:overflow-visible">
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40 print:hidden">
            <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-3 ml-auto">
-              
-              <a href="mailto:jefferson.osilva27@gmail.com?subject=Sugestão de Melhoria - Evoluti Fisio" className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Sugerir Melhoria">
-                 <MessageSquareShare size={18} />
-                 <span className="text-[10px] font-black text-slate-700 uppercase">Sugerir Melhoria</span>
-              </a>
-
-              <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Como funciona?">
-                 <Zap size={18} className="fill-[#FFCC00]" />
-                 <span className="text-[10px] font-black text-slate-700 uppercase">Guia</span>
-              </button>
-
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p>
-                <p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p>
-              </div>
+              <a href="mailto:jefferson.osilva27@gmail.com?subject=Sugestão de Melhoria - Evoluti Fisio" className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Sugerir Melhoria"><MessageSquareShare size={18} /><span className="text-[10px] font-black text-slate-700 uppercase">Sugerir Melhoria</span></a>
+              <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Como funciona?"><Zap size={18} className="fill-[#FFCC00]" /><span className="text-[10px] font-black text-slate-700 uppercase">Guia</span></button>
+              <div className="text-right hidden sm:block"><p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p><p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p></div>
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
            </div>
         </header>
-
         <div className="p-4 md:p-8 h-full print:p-0">
            <div className="max-w-[1600px] mx-auto">
               {currentView === 'dashboard' && renderDashboard()}
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} />}
               {currentView === 'pacientes' && <Pacientes pacientes={pacientes} hasAccess={hasAccess} user={user} navParams={navParams} />}
               {currentView === 'avaliacoes' && <Avaliacoes hasAccess={hasAccess} />}
+              {currentView === 'estoque' && <Estoque user={user} hasAccess={hasAccess} />}
               {currentView === 'financeiro' && <Financeiro user={user} navegarPara={navegarPara} />}
               {currentView === 'equipe' && <Equipe user={user} />}
            </div>
         </div>
       </main>
-
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-200 flex justify-around items-center h-20 px-2 z-[60] print:hidden">
          {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-[#00A1FF] scale-110' : 'text-slate-400'}`}>
-              <div className={`p-2 rounded-xl transition-all ${currentView === item.id ? 'bg-[#e5f5ff]' : ''}`}><item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} /></div>
-              <span className="text-[10px] font-bold">{item.label}</span>
-            </button>
+            <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-[#00A1FF] scale-110' : 'text-slate-400'}`}><div className={`p-2 rounded-xl transition-all ${currentView === item.id ? 'bg-[#e5f5ff]' : ''}`}><item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} /></div><span className="text-[10px] font-bold">{item.label}</span></button>
          ))}
       </nav>
     </div>
