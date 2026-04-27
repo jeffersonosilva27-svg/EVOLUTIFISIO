@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
-  Trash2, Edit3, DollarSign, Sparkles, Download, Package, 
-  TrendingDown, History, Info, Loader2, FileText
+  Trash2, Edit3, DollarSign, Sparkles, Download, 
+  TrendingDown, History, Info, Loader2, FileText, CalendarClock
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { realizarAnaliseIAHistorico, transcreverExameIA } from '../services/geminiService';
 
-export default function Pacientes({ pacientes, hasAccess, user }) {
+export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [termoBusca, setTermoBusca] = useState('');
   const [mostrarForm, setMostrarForm] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
@@ -17,11 +17,12 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
   const [evolucoes, setEvolucoes] = useState([]);
   const [novoSoap, setNovoSoap] = useState('');
   const [metricaPain, setMetricaPain] = useState(5); 
+  // NOVO ESTADO: Controla qual evolução está a ser editada
+  const [editandoEvolucaoId, setEditandoEvolucaoId] = useState(null);
 
   const [editando, setEditando] = useState(null);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   
-  // IA States
   const [analiseIA, setAnaliseIA] = useState('');
   const [carregandoIA, setCarregandoIA] = useState(false);
   const [exameProcessando, setExameProcessando] = useState(false);
@@ -31,7 +32,24 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
     nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: ''
   });
 
-  // --- LÓGICA DE BASE DE DADOS ---
+  const paramConsumido = useRef(false);
+
+  useEffect(() => {
+    if (navParams?.pacienteId && !paramConsumido.current && pacientes.length > 0) {
+      const p = pacientes.find(x => x.id === navParams.pacienteId);
+      if (p) {
+        setPacienteSelecionado(p);
+        setTabAtiva('historico');
+        paramConsumido.current = true;
+      }
+    }
+  }, [navParams, pacientes]);
+
+  useEffect(() => {
+     paramConsumido.current = false;
+  }, [navParams]);
+
+
   const salvarPaciente = async (e) => {
     e.preventDefault();
     try {
@@ -42,11 +60,9 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
         await addDoc(collection(db, "pacientes"), { ...novoPaciente, dataCadastro: new Date().toISOString(), status: 'ativo' });
         alert("Paciente cadastrado!");
       }
-      fecharForm();
+      setMostrarForm(false); setEditando(null); setNovoPaciente({ nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '' });
     } catch (error) { alert("Erro ao salvar."); }
   };
-
-  const fecharForm = () => { setMostrarForm(false); setEditando(null); setNovoPaciente({ nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '' }); };
 
   const abrirEdicao = (p) => {
     setEditando(p.id);
@@ -66,7 +82,6 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
     }
   };
 
-  // --- LÓGICA DE IA ---
   const dispararAnaliseIA = async () => {
     setCarregandoIA(true);
     const analise = await realizarAnaliseIAHistorico(pacienteSelecionado.nome, evolucoes);
@@ -79,7 +94,7 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
     const file = e.target.files[0];
     if (!file) return;
     setExameProcessando(true);
-    setLaudoExame(''); // Limpa o laudo anterior
+    setLaudoExame(''); 
     
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -88,16 +103,7 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
         const base64 = reader.result.split(',')[1];
         const resultado = await transcreverExameIA(base64);
         setLaudoExame(resultado);
-        
-        // Guarda no Firebase (Opcional, mas recomendado)
-        await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "exames"), {
-          data: new Date().toISOString(),
-          laudo: resultado,
-          nomeArquivo: file.name
-        });
-      } catch (error) {
-        alert("Erro ao processar exame. Tente uma imagem mais nítida.");
-      }
+      } catch (error) { alert("Erro ao processar exame."); }
       setExameProcessando(false);
     };
   };
@@ -108,25 +114,62 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setEvolucoes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
-      // Reseta os estados locais ao trocar de paciente
       setLaudoExame('');
       setAnaliseIA('');
+      setEditandoEvolucaoId(null);
+      setNovoSoap('');
       return () => unsubscribe();
     }
   }, [pacienteSelecionado]);
 
+  // NOVA FUNÇÃO: Prepara a evolução para edição
+  const iniciarEdicaoEvolucao = (evo) => {
+    setNovoSoap(evo.texto);
+    setMetricaPain(evo.metricaPain || 5);
+    setEditandoEvolucaoId(evo.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Sobe a tela suavemente para a caixa de texto
+  };
+
+  // FUNÇÃO ATUALIZADA: Salva nova evolução OU atualiza a existente
   const salvarEvolucao = async () => {
-    if (!novoSoap) return;
-    await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), {
-      texto: novoSoap, data: new Date().toISOString(), profissional: user?.name, registro: user?.registro, metricaPain
-    });
-    setNovoSoap('');
-    alert("Evolução guardada com sucesso!");
+    if (!novoSoap) return alert("Escreva algo antes de salvar.");
+    
+    try {
+      if (editandoEvolucaoId) {
+        // Atualiza a evolução existente
+        await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), {
+          texto: novoSoap, 
+          metricaPain,
+          dataEdicao: new Date().toISOString() // Deixa um rastro de que foi editado
+        });
+        alert("Evolução atualizada com sucesso!");
+      } else {
+        // Cria uma nova evolução
+        await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), {
+          texto: novoSoap, 
+          data: new Date().toISOString(), 
+          profissional: user?.name, 
+          metricaPain
+        });
+        
+        // Se veio da Agenda, marca como realizado
+        if (navParams?.atualizarStatusAgendamento) {
+          await updateDoc(doc(db, "agendamentos", navParams.atualizarStatusAgendamento), { status: 'realizado' });
+        }
+        alert("Evolução guardada com sucesso!");
+      }
+      
+      // Limpa os campos
+      setNovoSoap('');
+      setEditandoEvolucaoId(null);
+      setMetricaPain(5);
+    } catch (e) {
+      alert("Erro ao salvar evolução.");
+    }
   };
 
   const filtrados = (pacientes || []).filter(p => (p.nome || '').toLowerCase().includes(termoBusca.toLowerCase()));
 
-  // --- CONFIGURAÇÃO DE ABAS ---
   const abasDisponiveis = [
     { id: 'historico', icon: History, label: 'Histórico Clínico', restrito: false },
     { id: 'financeiro', icon: DollarSign, label: 'Financeiro Pessoal', restrito: true },
@@ -134,10 +177,12 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restrito: false }
   ];
 
-  // ==========================================
-  // TELA DE DETALHES DO PACIENTE
-  // ==========================================
   if (pacienteSelecionado) {
+    const historicoEVAReal = [...evolucoes]
+       .filter(e => e.metricaPain !== undefined && e.metricaPain !== null)
+       .reverse()
+       .slice(-10);
+
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 pb-20">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -150,7 +195,7 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
               {carregandoIA ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18} className="text-blue-400"/>}
               <span className="text-xs font-bold">Analisar com IA</span>
             </button>
-            {hasAccess(['gestor_clinico']) && (
+            {(hasAccess(['gestor_clinico']) || user?.role === 'gestor_clinico') && (
               <button onClick={() => excluirPaciente(pacienteSelecionado.id)} className={`p-3 rounded-2xl border shadow-sm transition-colors ${confirmarExclusao ? 'bg-red-600 text-white' : 'bg-white text-red-500 hover:bg-red-50'}`}>
                 {confirmarExclusao ? 'Clique para confirmar' : <Trash2 size={18}/>}
               </button>
@@ -158,7 +203,6 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
           </div>
         </header>
 
-        {/* Dashboards Rápidos */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
             <h2 className="text-3xl font-black text-slate-900">{pacienteSelecionado.nome}</h2>
@@ -172,17 +216,31 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
           </div>
           
           <div className="bg-[#1a1b1e] text-white p-8 rounded-[32px] shadow-xl relative overflow-hidden">
-             <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-4">Evolução de Dor (EVA)</p>
-             <div className="flex items-end gap-1.5 h-12">
-                {[4, 6, 8, 5, 4, 3, 2].map((v, i) => (
-                  <div key={i} className="flex-1 bg-blue-500 rounded-t-md opacity-30 hover:opacity-100 transition-opacity" style={{height: `${v*10}%`}}></div>
-                ))}
-             </div>
-             <p className="mt-4 text-xs font-bold text-blue-300 flex items-center"><TrendingDown size={14} className="mr-1"/> Histórico Estável</p>
+             <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-4">Evolução de Dor Real (EVA)</p>
+             {historicoEVAReal.length > 0 ? (
+                 <div className="flex items-end gap-1.5 h-12">
+                    {historicoEVAReal.map((evo, i) => (
+                      <div 
+                        key={i} 
+                        title={`Data: ${new Date(evo.data).toLocaleDateString()} - Dor: ${evo.metricaPain}`}
+                        className="flex-1 bg-blue-500 rounded-t-md opacity-50 hover:opacity-100 transition-opacity relative group cursor-pointer" 
+                        style={{height: `${Math.max(evo.metricaPain * 10, 5)}%`}}
+                      >
+                         <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                            {evo.metricaPain}
+                         </span>
+                      </div>
+                    ))}
+                 </div>
+             ) : (
+                 <div className="flex items-center justify-center h-12 border-2 border-dashed border-slate-700 rounded-xl">
+                    <span className="text-xs font-bold text-slate-500">Nenhum dado de dor registrado.</span>
+                 </div>
+             )}
+             <p className="mt-4 text-xs font-bold text-blue-300 flex items-center"><TrendingDown size={14} className="mr-1"/> Gráfico Cronológico</p>
           </div>
         </div>
 
-        {/* NAVEGAÇÃO DE ABAS */}
         <div className="flex border-b border-slate-200 overflow-x-auto custom-scrollbar">
           {abasDisponiveis.map(tab => {
             if (tab.restrito && !hasAccess(['gestor_clinico', 'admin_fin'])) return null;
@@ -198,36 +256,57 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
           })}
         </div>
 
-        {/* CONTEÚDO DAS ABAS */}
         <div className="mt-6">
-          
-          {/* ABA 1: HISTÓRICO */}
           {tabAtiva === 'historico' && (
             <div className="space-y-6">
-               <div className="bg-blue-50 p-8 rounded-[32px] border border-blue-100">
+               <div className={`p-8 rounded-[32px] border transition-colors ${editandoEvolucaoId ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-100'}`}>
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-blue-900">Nova Evolução Clínica</h3>
-                    <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-blue-200 shadow-sm">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Escala EVA: {metricaPain}</span>
-                      <input type="range" min="0" max="10" className="w-24 cursor-pointer accent-blue-600" value={metricaPain} onChange={e => setMetricaPain(e.target.value)}/>
+                    <h3 className={`font-bold ${editandoEvolucaoId ? 'text-amber-900' : 'text-blue-900'}`}>
+                      {editandoEvolucaoId ? 'Editando Evolução Existente' : 'Nova Evolução Clínica'}
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      {editandoEvolucaoId && (
+                        <button onClick={() => {setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(5);}} className="text-xs font-black text-amber-600 hover:text-amber-800 underline mr-2">Cancelar Edição</button>
+                      )}
+                      <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-blue-200 shadow-sm">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Escala EVA: {metricaPain}</span>
+                        <input type="range" min="0" max="10" className="w-24 cursor-pointer accent-blue-600" value={metricaPain} onChange={e => setMetricaPain(e.target.value)}/>
+                      </div>
                     </div>
                   </div>
-                  <textarea className="w-full border-2 border-blue-100 rounded-2xl p-5 h-32 mb-4 outline-none focus:border-blue-500 bg-white font-medium text-slate-700" placeholder="Descreva o atendimento..." value={novoSoap} onChange={e => setNovoSoap(e.target.value)} />
+                  <textarea className="w-full border-2 border-white rounded-2xl p-5 h-32 mb-4 outline-none focus:border-blue-500 bg-white/80 font-medium text-slate-700" placeholder="Descreva o atendimento..." value={novoSoap} onChange={e => setNovoSoap(e.target.value)} />
                   <div className="flex gap-3">
-                    <button onClick={salvarEvolucao} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black shadow-lg hover:bg-blue-700 transition-colors">Assinar Registro</button>
+                    <button onClick={salvarEvolucao} className={`${editandoEvolucaoId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 rounded-xl font-black shadow-lg transition-colors`}>
+                      {editandoEvolucaoId ? 'Guardar Alterações' : 'Assinar Registro'}
+                    </button>
                   </div>
                </div>
                
                <div className="space-y-4">
                   {evolucoes.map(evo => (
-                    <div key={evo.id} className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
+                    <div key={evo.id} className={`bg-white p-6 rounded-[24px] border shadow-sm transition-all ${editandoEvolucaoId === evo.id ? 'border-amber-400 ring-4 ring-amber-50' : 'border-slate-100 hover:border-blue-200'}`}>
                       <div className="flex justify-between mb-4">
                         <p className="text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">{evo.texto}</p>
-                        {evo.metricaPain && <div className="text-red-500 font-black text-lg bg-red-50 px-3 py-1 rounded-xl h-fit">EVA {evo.metricaPain}</div>}
+                        {evo.metricaPain !== undefined && <div className="text-red-500 font-black text-lg bg-red-50 px-3 py-1 rounded-xl h-fit">EVA {evo.metricaPain}</div>}
                       </div>
-                      <div className="flex justify-between text-[10px] font-bold text-slate-400 border-t border-slate-100 pt-4">
-                        <span>{new Date(evo.data).toLocaleString()}</span>
-                        <span className="text-blue-600 uppercase flex items-center gap-1"><Award size={12}/> {evo.profissional}</span>
+                      
+                      {/* O NOVO CARIMBO DE DATA */}
+                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-t border-slate-100 pt-4 mt-2">
+                        <div className="flex items-center gap-2">
+                           <CalendarClock size={14} className="text-slate-300"/>
+                           <span className="uppercase tracking-widest text-slate-500">
+                             Data do Atendimento: <span className="text-slate-700">{new Date(evo.data).toLocaleDateString('pt-BR')}</span> às {new Date(evo.data).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                           </span>
+                           {evo.dataEdicao && <span className="italic text-slate-300 ml-2">(Editado)</span>}
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                           {/* BOTÃO DE EDITAR A EVOLUÇÃO */}
+                           <button onClick={() => iniciarEdicaoEvolucao(evo)} className="text-blue-500 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg transition-colors">
+                             <Edit3 size={12}/> Editar
+                           </button>
+                           <span className="text-blue-600 uppercase flex items-center gap-1"><Award size={12}/> {evo.profissional}</span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -236,7 +315,6 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
             </div>
           )}
 
-          {/* ABA 2: FINANCEIRO */}
           {tabAtiva === 'financeiro' && hasAccess(['gestor_clinico', 'admin_fin']) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-2">
                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
@@ -256,12 +334,10 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
             </div>
           )}
 
-          {/* ABA 3: DADOS E EXAMES (A Nova Feature) */}
           {tabAtiva === 'dados' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-4">
               <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-sm">
                 <h3 className="font-black text-slate-800 mb-6 flex items-center"><FileText className="mr-2 text-blue-600"/> Arquivos e Exames Clínicos (TEDE)</h3>
-                
                 <div className="bg-slate-50 p-10 rounded-[24px] border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-center hover:bg-slate-100 transition-colors">
                   <input type="file" id="exame" className="hidden" onChange={handleUploadExame} accept="image/*,application/pdf" />
                   <label htmlFor="exame" className="cursor-pointer bg-slate-900 text-white px-8 py-4 rounded-xl font-black flex items-center gap-3 hover:scale-105 transition-all shadow-lg">
@@ -270,16 +346,13 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
                   </label>
                   <p className="text-xs text-slate-500 mt-4 font-bold">A Inteligência Artificial transcreverá os dados numéricos e gerará um laudo comparativo automático.</p>
                 </div>
-
                 {laudoExame && (
                   <div className="mt-8 bg-blue-50 p-8 rounded-[32px] border border-blue-100 animate-in zoom-in-95">
                     <h4 className="font-black text-blue-900 mb-6 flex items-center gap-2 border-b border-blue-200 pb-4">
                       <Sparkles className="text-blue-600"/> Laudo Transcrito e Comparativo (IA)
                     </h4>
                     <div className="prose prose-blue prose-sm max-w-none text-slate-700 font-medium">
-                      {laudoExame.split('\n').map((linha, i) => (
-                        <p key={i} className="mb-2 leading-relaxed">{linha}</p>
-                      ))}
+                      {laudoExame.split('\n').map((linha, i) => <p key={i} className="mb-2 leading-relaxed">{linha}</p>)}
                     </div>
                   </div>
                 )}
@@ -287,7 +360,6 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
             </div>
           )}
 
-          {/* ABA 4: IA E ESTATÍSTICAS */}
           {tabAtiva === 'ia' && (
             <div className="bg-slate-900 text-white p-10 rounded-[40px] shadow-2xl relative overflow-hidden min-h-[500px]">
               <div className="relative z-10">
@@ -316,9 +388,6 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
     );
   }
 
-  // ==========================================
-  // TELA DA LISTA DE PACIENTES (TELA INICIAL)
-  // ==========================================
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex justify-between items-end">
@@ -364,22 +433,16 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
                 </td>
               </tr>
             ))}
-            {filtrados.length === 0 && (
-              <tr>
-                <td colSpan="3" className="p-10 text-center text-slate-500 font-bold">Nenhum paciente encontrado com este nome.</td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
-      {/* MODAL DE CADASTRO / EDIÇÃO */}
       {mostrarForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white p-10 rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in-95">
              <div className="flex justify-between items-center mb-8">
                 <h3 className="font-black text-2xl text-slate-900">{editando ? 'Atualizar Dados' : 'Novo Registro de Paciente'}</h3>
-                <button onClick={fecharForm} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X/></button>
+                <button onClick={() => setMostrarForm(false)} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X/></button>
              </div>
              <form onSubmit={salvarPaciente} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
@@ -388,13 +451,9 @@ export default function Pacientes({ pacientes, hasAccess, user }) {
                 <input required placeholder="CPF" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-blue-500 font-bold text-slate-700" value={novoPaciente.cpf} onChange={e => setNovoPaciente({...novoPaciente, cpf: e.target.value})} />
                 <input required placeholder="WhatsApp" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-blue-500 font-bold text-slate-700" value={novoPaciente.whatsapp} onChange={e => setNovoPaciente({...novoPaciente, whatsapp: e.target.value})} />
                 <input required placeholder="Tel. Emergência" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-blue-500 font-bold text-slate-700" value={novoPaciente.emergencia} onChange={e => setNovoPaciente({...novoPaciente, emergencia: e.target.value})} />
-                
-                {hasAccess(['gestor_clinico', 'admin_fin']) ? (
+                {hasAccess(['gestor_clinico', 'admin_fin']) && (
                   <input required type="number" placeholder="Valor da Sessão (R$)" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-blue-500 font-bold text-green-600" value={novoPaciente.valor} onChange={e => setNovoPaciente({...novoPaciente, valor: e.target.value})} />
-                ) : (
-                  <div className="border-2 p-4 rounded-xl bg-slate-100 text-slate-400 font-bold flex items-center justify-center cursor-not-allowed text-xs">Valor (Acesso Restrito)</div>
                 )}
-                
                 <textarea placeholder="Observações clínicas iniciais..." className="md:col-span-2 border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-blue-500 h-24 font-medium text-slate-700" value={novoPaciente.observacoes} onChange={e => setNovoPaciente({...novoPaciente, observacoes: e.target.value})} />
                 
                 <button type="submit" className="md:col-span-2 bg-blue-600 text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-blue-700 transition-all">
