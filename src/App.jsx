@@ -2,11 +2,11 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
-import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy, collectionGroup } from 'firebase/firestore';
 
 import Agenda from './views/Agenda'; 
 import Pacientes from './views/Pacientes';
@@ -77,8 +77,10 @@ function MainApp() {
   const [currentView, setCurrentView] = useState('dashboard'); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const [navParams, setNavParams] = useState(null);
+  
   const [pacientes, setPacientes] = useState([]);
   const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
+  const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
 
   const navegarPara = (view, params = null) => {
     setNavParams(params);
@@ -147,10 +149,24 @@ function MainApp() {
       const unsubPac = onSnapshot(query(collection(db, "pacientes"), orderBy("nome", "asc")), (snap) => {
         setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
+      
       const unsubAg = onSnapshot(collection(db, "agendamentos"), (snap) => {
         setAgendamentosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
-      return () => { unsubPac(); unsubAg(); };
+
+      // BUSCA GLOBAL DE TODOS OS EXERCÍCIOS PRESCRITOS NOS PLANOS
+      const unsubEx = onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
+        const exs = snap.docs.map(d => ({ 
+           id: d.id, 
+           pacienteId: d.ref.parent.parent.id, // Acha o ID do paciente automaticamente
+           ...d.data() 
+        }));
+        // Ordena para que os mais recentes apareçam no topo
+        exs.sort((a,b) => new Date(b.dataInclusao || 0) - new Date(a.dataInclusao || 0));
+        setExerciciosGlobais(exs);
+      });
+
+      return () => { unsubPac(); unsubAg(); unsubEx(); };
     }
   }, [user]);
 
@@ -194,6 +210,10 @@ function MainApp() {
 
     const rotuloMetricas = user.role === 'gestor_clinico' ? 'Sessões da Clínica Hoje' : 'Suas Sessões Hoje';
     const primeiroNomeUsuario = (user?.name || user?.nome || 'Equipe').split(' ')[0];
+
+    // Lógica para os Exercícios: Pega os últimos 6 criados
+    const meusExercicios = user.role === 'gestor_clinico' ? exerciciosGlobais : exerciciosGlobais.filter(e => e.profissional === user.name);
+    const ultimosExercicios = meusExercicios.slice(0, 6);
 
     if (user.role === 'recepcao') {
         const sessoesPendentesGeral = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
@@ -292,6 +312,44 @@ function MainApp() {
                         <p className="text-xs font-bold text-blue-600/70 mt-2">Sessões atrasadas sem assinatura</p>
                     </div>
                 </div>
+            </div>
+
+            {/* SEÇÃO NOVA: ÚLTIMAS PRESCRIÇÕES DO PLANO DE TRATAMENTO */}
+            <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                        <Dumbbell className="text-blue-600"/> Recentes no Plano de Tratamento
+                    </h3>
+                </div>
+
+                {ultimosExercicios.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {ultimosExercicios.map(ex => {
+                            const pac = pacientes.find(p => p.id === ex.pacienteId);
+                            return (
+                                <div key={ex.id} onClick={() => navegarPara('pacientes', { pacienteId: ex.pacienteId })} className="bg-slate-50 p-5 rounded-[24px] border border-slate-200 flex flex-col group hover:border-blue-400 transition-colors cursor-pointer shadow-sm hover:shadow-md">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 bg-blue-100 px-2 py-1 rounded-lg">{ex.musculo}</span>
+                                        <span className="text-[10px] font-bold text-slate-400">{new Date(ex.dataInclusao).toLocaleDateString()}</span>
+                                    </div>
+                                    <h4 className="font-black text-slate-900 text-sm mb-1 leading-tight">{ex.nome}</h4>
+                                    <p className="text-xs font-bold text-slate-500 mb-4">
+                                        {ex.series}x {ex.reps} {ex.carga ? <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded ml-1">• {ex.carga}</span> : ''}
+                                    </p>
+                                    <div className="mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-[10px] font-black uppercase text-slate-500">
+                                        <span className="truncate max-w-[130px]" title={pac?.nome}>{pac?.nome || 'Paciente não encontrado'}</span>
+                                        <span className="text-blue-500">{ex.profissional?.split(' ')[0]}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                        <Dumbbell size={32} className="mx-auto text-slate-300 mb-3"/>
+                        <p className="font-bold text-slate-500 text-sm">Você ainda não prescreveu exercícios nos planos de tratamento.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -419,7 +477,6 @@ function MainApp() {
               </div>
               <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
               
-              {/* O NOVO BOTÃO DE SAIR NO MOBILE FICA AQUI! */}
               <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:text-red-600 bg-red-50 rounded-full ml-1" title="Sair da Conta">
                  <LogOut size={18}/>
               </button>
