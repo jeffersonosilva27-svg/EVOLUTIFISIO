@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { analisarCapacidadePaciente } from '../services/geminiService';
 
 const LOCAIS = ['Sala 701', 'Sala 702', 'Ginásio Clínico', 'Studio Pilates', 'Prancha Ortostática', 'Atendimento Domiciliar'];
 const DIAS_NOMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -29,10 +28,6 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
-const limparDadosParaFirestore = (dados) => {
-  return JSON.parse(JSON.stringify(dados));
-};
-
 export default function Agenda({ user, hasAccess, navegarPara }) {
   const [agendamentos, setAgendamentos] = useState([]);
   const [pacientes, setPacientes] = useState([]);
@@ -53,7 +48,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const [modalCancelamento, setModalCancelamento] = useState(false);
   
   const [filaConflitos, setFilaConflitos] = useState([]);
-  const [agendamentosBons, setAgendamentosBons] = useState([]);
   const [idxConflito, setIdxConflito] = useState(0);
   const [dualExistente, setDualExistente] = useState(null);
   const [dualNovo, setDualNovo] = useState(null);
@@ -130,19 +124,19 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const aplicarCancelamento = async (motivo) => {
     setCarregandoIA(true);
     try {
-      const payload = limparDadosParaFirestore({
+      const payload = {
          status: 'cancelado',
-         motivoCancelamento: motivo || 'Sem motivo',
+         motivoCancelamento: String(motivo || 'Sem motivo'),
          dataCancelamento: new Date().toISOString(),
-         canceladoPor: user?.name || 'Equipe'
-      });
+         canceladoPor: String(user?.name || 'Equipe')
+      };
       await updateDoc(doc(db, "agendamentos", agendamentoEditando), payload);
       alert(`Sessão classificada como: ${motivo}.`);
       setModalCancelamento(false);
       setMostrarForm(false);
       setAgendamentoEditando(null);
     } catch (error) {
-      alert("Erro ao cancelar o atendimento: " + error.message);
+      alert("Erro ao cancelar o atendimento.");
     }
     setCarregandoIA(false);
   };
@@ -161,10 +155,10 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
         for (const a of alvos) {
             await deleteDoc(doc(db, "agendamentos", a.id));
         }
-        alert(`${alvos.length} erro(s) de agendamento apagado(s) da base.`);
+        alert(`${alvos.length} erro(s) apagado(s) da base.`);
         setMostrarForm(false);
     } catch (error) {
-        alert("Ocorreu um erro ao tentar excluir: " + error.message);
+        alert("Ocorreu um erro ao excluir.");
     }
     setCarregandoIA(false);
   };
@@ -180,71 +174,67 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
            if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
            else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
         }
-        let novosBons = [];
-        let novosConflitos = [];
+        
+        let editados = 0;
         for (let alvo of alvos) {
             const isAtual = alvo.id === agendamentoEditando;
             const novaData = isAtual ? form.data : alvo.data; 
-            const agNovo = { 
-                ...alvo, 
-                data: novaData, 
-                hora: form.hora, 
-                profissionalId: form.profissionalId, 
-                profissionalNome: form.profissionalNome || 'Profissional', 
-                local: form.local, 
-                paciente: form.pacienteNome || 'Paciente', 
-                isEdit: true, 
-                originalId: alvo.id 
-            };
-            const conflito = verificarConflito(agNovo.data, agNovo.hora, agNovo.profissionalId, agNovo.local, alvo.id);
-            if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito });
-            else novosBons.push(agNovo);
+            
+            const conflito = verificarConflito(novaData, form.hora, form.profissionalId, form.local, alvo.id);
+            if (!conflito || isAtual) {
+               await updateDoc(doc(db, "agendamentos", alvo.id), {
+                   data: String(novaData),
+                   hora: String(form.hora),
+                   local: String(form.local),
+                   profissionalId: String(form.profissionalId),
+                   profissional: String(form.profissionalNome)
+               });
+               editados++;
+            }
         }
-        if (novosConflitos.length > 0) {
-           // CORREÇÃO CRÍTICA: Carregar as variáveis da Dupla Janela antes de abrir!
-           setAgendamentosBons(novosBons); 
-           setFilaConflitos(novosConflitos); 
-           setIdxConflito(0); 
-           setDualExistente(novosConflitos[0].existente);
-           setDualNovo(novosConflitos[0].novo);
-           setMostrarForm(false);
-        } else {
-           for (const ag of novosBons) {
-               const { originalId, isEdit, ...rest } = ag;
-               const payloadSeguro = {
-                   pacienteId: String(rest.pacienteId || ''),
-                   paciente: String(rest.pacienteNome || rest.paciente || 'Paciente'),
-                   profissionalId: String(rest.profissionalId || ''),
-                   profissional: String(rest.profissionalNome || rest.profissional || 'Equipe'),
-                   local: String(rest.local || ''),
-                   data: String(rest.data || ''),
-                   hora: String(rest.hora || ''),
-                   tipo: String(rest.tipo || 'Atendimento')
-               };
-               await updateDoc(doc(db, "agendamentos", originalId), payloadSeguro); 
-           }
-           setMostrarForm(false);
-        }
+        alert(`Edição concluída. ${editados} sessão(ões) atualizada(s).`);
+        setMostrarForm(false);
     } catch (error) {
-        alert("Erro ao editar agendamento: " + error.message);
+        alert("Erro ao editar agendamento.");
     }
     setCarregandoIA(false);
   };
 
+  // =================================================================================
+  // O NOVO MOTOR "AUTO-SKIP" (À PROVA DE BALA PARA LOTE E DUPLICADOS)
+  // =================================================================================
   const processarNovoAgendamento = async () => {
       setCarregandoIA(true);
       try {
-          const pacienteSeguro = form.pacienteNome || 'Paciente Sem Nome';
-          const profSeguro = form.profissionalNome || 'Profissional Sem Nome';
-          
-          let novosBons = [];
-          let novosConflitos = [];
+          const pacienteSeguro = String(form.pacienteNome || 'Paciente');
+          const profSeguro = String(form.profissionalNome || 'Profissional');
           
           if (!isLote) {
              const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
-             if (conflito) novosConflitos.push({ novo: { ...form }, existente: conflito });
-             else novosBons.push({ ...form });
+             if (conflito) {
+                 // Apenas para 1 sessão, mostra o conflito normalmente
+                 setFilaConflitos([{ novo: {...form}, existente: conflito }]);
+                 setIdxConflito(0);
+                 setDualExistente(conflito);
+                 setDualNovo({...form});
+                 setMostrarForm(false);
+             } else {
+                 await addDoc(collection(db, "agendamentos"), {
+                     pacienteId: String(form.pacienteId),
+                     paciente: pacienteSeguro,
+                     profissionalId: String(form.profissionalId),
+                     profissional: profSeguro,
+                     local: String(form.local),
+                     data: String(form.data),
+                     hora: String(form.hora),
+                     tipo: String(form.tipo),
+                     status: 'pendente'
+                 });
+                 alert("Agendamento efetuado com sucesso!");
+                 setMostrarForm(false);
+             }
           } else {
+             // MODO LOTE: AUTO-SKIP (Não bloqueia se houver choque de horários)
              if (loteConfig.diasSemana.length === 0) {
                 setCarregandoIA(false);
                 return alert("Selecione pelo menos um dia da semana para agendar o lote!");
@@ -254,53 +244,60 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
              const rawData = form.data || obterDataLocalISO(new Date());
              const [ano, mes, diaSplit] = rawData.split('-');
              let dt = new Date(ano, mes - 1, diaSplit, 12, 0, 0);
+             
              let sessoesProcessadas = 0; 
              let limiteDeSeguranca = 0; 
+             let ignoradasPorConflito = 0;
+             let sessoesParaSalvar = [];
              
              while (sessoesProcessadas < maxSessoes && limiteDeSeguranca < 365) {
                 limiteDeSeguranca++;
                 if (loteConfig.diasSemana.includes(dt.getDay())) {
                    const dIso = obterDataLocalISO(dt);
-                   const agNovo = { ...form, data: dIso, pacoteInfo: `${sessoesProcessadas+1}/${maxSessoes}` };
                    const conflito = verificarConflito(dIso, form.hora, form.profissionalId, form.local);
-                   if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito });
-                   else novosBons.push(agNovo);
+                   
+                   if (conflito) {
+                       ignoradasPorConflito++; // Pula silenciosamente para não bloquear a app
+                   } else {
+                       sessoesParaSalvar.push({
+                           data: dIso,
+                           pacoteInfo: `${sessoesParaSalvar.length + 1} de Lote`
+                       });
+                   }
                    sessoesProcessadas++; 
                 }
                 dt.setDate(dt.getDate() + 1); 
              }
-          }
-          
-          if (novosConflitos.length > 0) {
-             // CORREÇÃO CRÍTICA: Impedir o ecrã "invisível"
-             setAgendamentosBons(novosBons); 
-             setFilaConflitos(novosConflitos); 
-             setIdxConflito(0); 
-             setDualExistente(novosConflitos[0].existente);
-             setDualNovo(novosConflitos[0].novo);
-             setMostrarForm(false);
-          } else {
-             for (const ag of novosBons) {
-                 const payloadSeguro = {
-                     pacienteId: String(ag.pacienteId || ''),
-                     paciente: String(ag.pacienteNome || ag.paciente || 'Paciente Sem Nome'),
-                     profissionalId: String(ag.profissionalId || ''),
-                     profissional: String(ag.profissionalNome || ag.profissional || 'Equipe'),
-                     local: String(ag.local || ''),
-                     data: String(ag.data || obterDataLocalISO(new Date())),
-                     hora: String(ag.hora || '08:00'),
-                     tipo: String(ag.tipo || 'Atendimento'),
-                     status: 'pendente',
-                     pacoteInfo: String(ag.pacoteInfo || '')
-                 };
-                 await addDoc(collection(db, "agendamentos"), payloadSeguro);
+             
+             // Grava apenas as sessões livres na base de dados
+             if (sessoesParaSalvar.length > 0) {
+                 for (const s of sessoesParaSalvar) {
+                     await addDoc(collection(db, "agendamentos"), {
+                         pacienteId: String(form.pacienteId),
+                         paciente: pacienteSeguro,
+                         profissionalId: String(form.profissionalId),
+                         profissional: profSeguro,
+                         local: String(form.local),
+                         data: String(s.data),
+                         hora: String(form.hora),
+                         tipo: String(form.tipo),
+                         status: 'pendente',
+                         pacoteInfo: String(s.pacoteInfo)
+                     });
+                 }
              }
-             alert("Agendamento efetuado com sucesso!");
+
+             if (ignoradasPorConflito > 0) {
+                 alert(`Lote processado! ${sessoesParaSalvar.length} sessões agendadas com sucesso.\n\n⚠️ Atenção: ${ignoradasPorConflito} sessões foram puladas porque o horário/sala já estava ocupado.`);
+             } else {
+                 alert(`Lote processado! Todas as ${sessoesParaSalvar.length} sessões foram agendadas perfeitamente.`);
+             }
+             
              setMostrarForm(false);
           }
       } catch (error) {
           console.error(error);
-          alert("Ocorreu um erro ao comunicar com a base de dados: " + error.message);
+          alert("Erro de servidor. Tente atualizar a página.");
       } finally {
           setCarregandoIA(false);
       }
@@ -311,51 +308,29 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     try {
         if (acao === 'salvar') {
             if (dualExistente && dualExistente.id) {
-                await updateDoc(doc(db, "agendamentos", dualExistente.id), limparDadosParaFirestore({ 
+                await updateDoc(doc(db, "agendamentos", dualExistente.id), { 
                     data: String(dualExistente.data), hora: String(dualExistente.hora), profissionalId: String(dualExistente.profissionalId), local: String(dualExistente.local) 
-                }));
+                });
             }
-            setAgendamentosBons(prev => [...prev, dualNovo]);
+            const payloadSeguro = {
+                pacienteId: String(dualNovo.pacienteId || ''),
+                paciente: String(dualNovo.pacienteNome || dualNovo.paciente || 'Paciente'),
+                profissionalId: String(dualNovo.profissionalId || ''),
+                profissional: String(dualNovo.profissionalNome || dualNovo.profissional || 'Equipe'),
+                local: String(dualNovo.local || ''),
+                data: String(dualNovo.data || ''),
+                hora: String(dualNovo.hora || ''),
+                tipo: String(dualNovo.tipo || 'Atendimento'),
+                status: 'pendente'
+            };
+            await addDoc(collection(db, "agendamentos"), payloadSeguro);
         }
-        
-        const prox = idxConflito + 1;
-        if (prox < filaConflitos.length) { 
-            // Avança para o próximo conflito sem fechar a janela
-            setIdxConflito(prox); 
-            setDualExistente(filaConflitos[prox].existente);
-            setDualNovo(filaConflitos[prox].novo);
-        } else {
-            // Grava tudo quando os conflitos acabam
-            for (const ag of agendamentosBons) {
-                if (ag.isEdit) { 
-                    const { originalId, isEdit, ...rest } = ag; 
-                    await updateDoc(doc(db, "agendamentos", originalId), {
-                       data: String(rest.data), hora: String(rest.hora), local: String(rest.local), profissionalId: String(rest.profissionalId)
-                    }); 
-                } else { 
-                    const payloadSeguro = {
-                        pacienteId: String(ag.pacienteId || ''),
-                        paciente: String(ag.pacienteNome || ag.paciente || 'Paciente'),
-                        profissionalId: String(ag.profissionalId || ''),
-                        profissional: String(ag.profissionalNome || ag.profissional || 'Equipe'),
-                        local: String(ag.local || ''),
-                        data: String(ag.data || ''),
-                        hora: String(ag.hora || ''),
-                        tipo: String(ag.tipo || 'Atendimento'),
-                        status: 'pendente',
-                        pacoteInfo: String(ag.pacoteInfo || '')
-                    };
-                    await addDoc(collection(db, "agendamentos"), payloadSeguro); 
-                }
-            }
-            alert("Resolução de lote concluída!"); 
-            setFilaConflitos([]); 
-            setDualExistente(null);
-            setDualNovo(null);
-            setAgendamentosBons([]);
-        }
+        alert("Resolução concluída!");
+        setFilaConflitos([]); 
+        setDualExistente(null);
+        setDualNovo(null);
     } catch (error) {
-        alert("Falha ao resolver conflitos: " + error.message);
+        alert("Falha ao resolver conflito.");
     }
     setCarregandoIA(false);
   };
@@ -498,10 +473,10 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
               <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl p-6 animate-in zoom-in-95 flex flex-col max-h-[95vh]">
                   <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4 shrink-0">
                      <div>
-                       <h3 className="text-xl font-black text-red-600 flex items-center gap-2"><AlertTriangle size={20}/> Conflito Detectado</h3>
-                       <p className="text-slate-500 font-medium text-xs mt-1">Comparativo (Conflito {idxConflito + 1} de {filaConflitos.length})</p>
+                       <h3 className="text-xl font-black text-red-600 flex items-center gap-2"><AlertTriangle size={20}/> Conflito Detectado na Agenda!</h3>
+                       <p className="text-slate-500 font-medium text-xs mt-1">Este horário já está ocupado. Verifique os detalhes abaixo.</p>
                      </div>
-                     <button onClick={() => { setFilaConflitos([]); setAgendamentosBons([]); setDualExistente(null); setDualNovo(null); }} className="p-2 bg-slate-50 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={18}/></button>
+                     <button onClick={() => { setFilaConflitos([]); setDualExistente(null); setDualNovo(null); }} className="p-2 bg-slate-50 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={18}/></button>
                   </div>
 
                   <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -539,9 +514,9 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                   </div>
 
                   <div className="mt-6 flex flex-col md:flex-row gap-3 shrink-0">
-                      <button onClick={() => resolverConflito('pular')} disabled={carregandoIA} className="flex-1 py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-colors text-sm">Pular Janela 2</button>
+                      <button onClick={() => { setFilaConflitos([]); setDualExistente(null); setDualNovo(null); }} disabled={carregandoIA} className="flex-1 py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-colors text-sm">Cancelar Agendamento</button>
                       <button onClick={() => resolverConflito('salvar')} disabled={carregandoIA} className="flex-[2] bg-[#0F214A] text-white font-black rounded-xl hover:bg-[#00A1FF] transition-all flex items-center justify-center gap-2 shadow-lg text-sm">
-                          {carregandoIA ? <Loader2 className="animate-spin" size={16} /> : 'Salvar Alterações'}
+                          {carregandoIA ? <Loader2 className="animate-spin" size={16} /> : 'Salvar Substituição'}
                       </button>
                   </div>
               </div>
