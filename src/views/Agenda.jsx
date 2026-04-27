@@ -29,6 +29,10 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
+const limparDadosParaFirestore = (dados) => {
+  return JSON.parse(JSON.stringify(dados));
+};
+
 export default function Agenda({ user, hasAccess, navegarPara }) {
   const [agendamentos, setAgendamentos] = useState([]);
   const [pacientes, setPacientes] = useState([]);
@@ -39,7 +43,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const [agendamentoEditando, setAgendamentoEditando] = useState(null);
   
   const [carregandoIA, setCarregandoIA] = useState(false);
-  const [insightCapacidade, setInsightCapacidade] = useState('');
   
   const [form, setForm] = useState({ pacienteId: '', pacienteNome: '', tipo: 'Atendimento', local: '', data: obterDataLocalISO(new Date()), hora: '08:00', profissionalId: '', profissionalNome: '' });
   
@@ -47,7 +50,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const [loteConfig, setLoteConfig] = useState({ quantidade: 10, diasSemana: [] });
   
   const [modalEscopo, setModalEscopo] = useState({ open: false, type: '' });
-  const [modalCancelamento, setModalCancelamento] = useState(false); // NOVO ESTADO
+  const [modalCancelamento, setModalCancelamento] = useState(false);
   
   const [filaConflitos, setFilaConflitos] = useState([]);
   const [agendamentosBons, setAgendamentosBons] = useState([]);
@@ -84,19 +87,24 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     );
   };
 
-  const abrirFormEdicao = async (agend) => {
+  const abrirFormEdicao = (agend) => {
     setAgendamentoEditando(agend.id);
-    setForm({ pacienteId: agend.pacienteId || '', pacienteNome: agend.paciente || '', tipo: agend.tipo || 'Atendimento', data: agend.data || '', hora: agend.hora || '', local: agend.local || '', profissionalId: agend.profissionalId || '', profissionalNome: agend.profissional || '' });
+    setForm({ 
+      pacienteId: agend.pacienteId || '', 
+      pacienteNome: agend.paciente || '', 
+      tipo: agend.tipo || 'Atendimento', 
+      data: agend.data || '', 
+      hora: agend.hora || '', 
+      local: agend.local || '', 
+      profissionalId: agend.profissionalId || '', 
+      profissionalNome: agend.profissional || '' 
+    });
     setMostrarForm(true);
-    try {
-      const analise = await analisarCapacidadePaciente([]); 
-      setInsightCapacidade(analise || "Sem histórico clínico.");
-    } catch (e) { setInsightCapacidade("IA Indisponível."); }
   };
 
   const tentarSalvar = (e) => {
     e.preventDefault();
-    if (!form.pacienteId || !form.profissionalId) return alert("Preencha tudo.");
+    if (!form.pacienteId || !form.profissionalId) return alert("Preencha todos os campos obrigatórios.");
     if (agendamentoEditando) {
       const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
       if (pendentes.length > 0) setModalEscopo({ open: true, type: 'edit' });
@@ -109,7 +117,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const tentarExcluir = (e) => {
     if (e) e.preventDefault();
     const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-    setModalCancelamento(false); // Fecha o modal de cancelamento
+    setModalCancelamento(false); 
     if (pendentes.length > 0) {
         setModalEscopo({ open: true, type: 'delete' });
     } else {
@@ -119,22 +127,22 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     }
   };
 
-  // NOVA FUNÇÃO: Aplicar Status de Cancelamento
   const aplicarCancelamento = async (motivo) => {
     setCarregandoIA(true);
     try {
-      await updateDoc(doc(db, "agendamentos", agendamentoEditando), {
+      const payload = limparDadosParaFirestore({
          status: 'cancelado',
-         motivoCancelamento: motivo,
+         motivoCancelamento: motivo || 'Sem motivo',
          dataCancelamento: new Date().toISOString(),
          canceladoPor: user?.name || 'Equipe'
       });
+      await updateDoc(doc(db, "agendamentos", agendamentoEditando), payload);
       alert(`Sessão classificada como: ${motivo}.`);
       setModalCancelamento(false);
       setMostrarForm(false);
       setAgendamentoEditando(null);
     } catch (error) {
-      alert("Erro ao cancelar o atendimento.");
+      alert("Erro ao cancelar o atendimento: " + error.message);
     }
     setCarregandoIA(false);
   };
@@ -142,109 +150,212 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const aplicarExclusao = async (escopo) => {
     setModalEscopo({ open: false, type: '' });
     setCarregandoIA(true);
-    const refAtual = agendamentos.find(a => a.id === agendamentoEditando);
-    let alvos = [refAtual];
-    if (escopo !== 'unico') {
-       const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-       if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
-       else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
+    try {
+        const refAtual = agendamentos.find(a => a.id === agendamentoEditando);
+        let alvos = [refAtual];
+        if (escopo !== 'unico') {
+           const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
+           if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
+           else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
+        }
+        for (const a of alvos) {
+            await deleteDoc(doc(db, "agendamentos", a.id));
+        }
+        alert(`${alvos.length} erro(s) de agendamento apagado(s) da base.`);
+        setMostrarForm(false);
+    } catch (error) {
+        alert("Ocorreu um erro ao tentar excluir: " + error.message);
     }
-    await Promise.all(alvos.map(a => deleteDoc(doc(db, "agendamentos", a.id))));
-    alert(`${alvos.length} erro(s) de agendamento apagado(s) da base.`);
-    setMostrarForm(false);
     setCarregandoIA(false);
   };
 
   const aplicarEdicao = async (escopo) => {
     setModalEscopo({ open: false, type: '' });
     setCarregandoIA(true);
-    const refAtual = agendamentos.find(a => a.id === agendamentoEditando);
-    let alvos = [refAtual];
-    if (escopo !== 'unico') {
-       const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-       if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
-       else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
-    }
-    let novosBons = [];
-    let novosConflitos = [];
-    for (let alvo of alvos) {
-        const isAtual = alvo.id === agendamentoEditando;
-        const novaData = isAtual ? form.data : alvo.data; 
-        const agNovo = { ...alvo, data: novaData, hora: form.hora, profissionalId: form.profissionalId, profissionalNome: form.profissionalNome, local: form.local, paciente: form.pacienteNome, isEdit: true, originalId: alvo.id };
-        const conflito = verificarConflito(agNovo.data, agNovo.hora, agNovo.profissionalId, agNovo.local, alvo.id);
-        if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito });
-        else novosBons.push(agNovo);
-    }
-    if (novosConflitos.length > 0) {
-       setAgendamentosBons(novosBons); setFilaConflitos(novosConflitos); setIdxConflito(0); setMostrarForm(false);
-    } else {
-       await Promise.all(novosBons.map(ag => { const { originalId, isEdit, ...rest } = ag; return updateDoc(doc(db, "agendamentos", originalId), rest); }));
-       setMostrarForm(false);
+    try {
+        const refAtual = agendamentos.find(a => a.id === agendamentoEditando);
+        let alvos = [refAtual];
+        if (escopo !== 'unico') {
+           const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
+           if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
+           else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
+        }
+        let novosBons = [];
+        let novosConflitos = [];
+        for (let alvo of alvos) {
+            const isAtual = alvo.id === agendamentoEditando;
+            const novaData = isAtual ? form.data : alvo.data; 
+            const agNovo = { 
+                ...alvo, 
+                data: novaData, 
+                hora: form.hora, 
+                profissionalId: form.profissionalId, 
+                profissionalNome: form.profissionalNome || 'Profissional', 
+                local: form.local, 
+                paciente: form.pacienteNome || 'Paciente', 
+                isEdit: true, 
+                originalId: alvo.id 
+            };
+            const conflito = verificarConflito(agNovo.data, agNovo.hora, agNovo.profissionalId, agNovo.local, alvo.id);
+            if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito });
+            else novosBons.push(agNovo);
+        }
+        if (novosConflitos.length > 0) {
+           // CORREÇÃO CRÍTICA: Carregar as variáveis da Dupla Janela antes de abrir!
+           setAgendamentosBons(novosBons); 
+           setFilaConflitos(novosConflitos); 
+           setIdxConflito(0); 
+           setDualExistente(novosConflitos[0].existente);
+           setDualNovo(novosConflitos[0].novo);
+           setMostrarForm(false);
+        } else {
+           for (const ag of novosBons) {
+               const { originalId, isEdit, ...rest } = ag;
+               const payloadSeguro = {
+                   pacienteId: String(rest.pacienteId || ''),
+                   paciente: String(rest.pacienteNome || rest.paciente || 'Paciente'),
+                   profissionalId: String(rest.profissionalId || ''),
+                   profissional: String(rest.profissionalNome || rest.profissional || 'Equipe'),
+                   local: String(rest.local || ''),
+                   data: String(rest.data || ''),
+                   hora: String(rest.hora || ''),
+                   tipo: String(rest.tipo || 'Atendimento')
+               };
+               await updateDoc(doc(db, "agendamentos", originalId), payloadSeguro); 
+           }
+           setMostrarForm(false);
+        }
+    } catch (error) {
+        alert("Erro ao editar agendamento: " + error.message);
     }
     setCarregandoIA(false);
   };
 
-  // CORREÇÃO DO LOTE: Limite de segurança e check de dias
   const processarNovoAgendamento = async () => {
       setCarregandoIA(true);
-      let novosBons = [];
-      let novosConflitos = [];
-      
-      if (!isLote) {
-         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
-         if (conflito) novosConflitos.push({ novo: { ...form }, existente: conflito });
-         else novosBons.push({ ...form });
-      } else {
-         if (loteConfig.diasSemana.length === 0) {
-            setCarregandoIA(false);
-            return alert("Selecione pelo menos um dia da semana para agendar o lote!");
-         }
-         
-         const [ano, mes, diaSplit] = form.data.split('-');
-         let dt = new Date(ano, mes - 1, diaSplit, 12, 0, 0);
-         let sessoesProcessadas = 0; 
-         let limiteDeSeguranca = 0; // Proteção contra loop infinito
-         
-         while (sessoesProcessadas < loteConfig.quantidade && limiteDeSeguranca < 365) {
-            limiteDeSeguranca++;
-            if (loteConfig.diasSemana.includes(dt.getDay())) {
-               const dIso = obterDataLocalISO(dt);
-               const agNovo = { ...form, data: dIso, pacoteInfo: `${sessoesProcessadas+1}/${loteConfig.quantidade}` };
-               const conflito = verificarConflito(dIso, form.hora, form.profissionalId, form.local);
-               if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito });
-               else novosBons.push(agNovo);
-               sessoesProcessadas++; 
-            }
-            dt.setDate(dt.getDate() + 1); 
-         }
+      try {
+          const pacienteSeguro = form.pacienteNome || 'Paciente Sem Nome';
+          const profSeguro = form.profissionalNome || 'Profissional Sem Nome';
+          
+          let novosBons = [];
+          let novosConflitos = [];
+          
+          if (!isLote) {
+             const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
+             if (conflito) novosConflitos.push({ novo: { ...form }, existente: conflito });
+             else novosBons.push({ ...form });
+          } else {
+             if (loteConfig.diasSemana.length === 0) {
+                setCarregandoIA(false);
+                return alert("Selecione pelo menos um dia da semana para agendar o lote!");
+             }
+             
+             const maxSessoes = parseInt(loteConfig.quantidade) || 1;
+             const rawData = form.data || obterDataLocalISO(new Date());
+             const [ano, mes, diaSplit] = rawData.split('-');
+             let dt = new Date(ano, mes - 1, diaSplit, 12, 0, 0);
+             let sessoesProcessadas = 0; 
+             let limiteDeSeguranca = 0; 
+             
+             while (sessoesProcessadas < maxSessoes && limiteDeSeguranca < 365) {
+                limiteDeSeguranca++;
+                if (loteConfig.diasSemana.includes(dt.getDay())) {
+                   const dIso = obterDataLocalISO(dt);
+                   const agNovo = { ...form, data: dIso, pacoteInfo: `${sessoesProcessadas+1}/${maxSessoes}` };
+                   const conflito = verificarConflito(dIso, form.hora, form.profissionalId, form.local);
+                   if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito });
+                   else novosBons.push(agNovo);
+                   sessoesProcessadas++; 
+                }
+                dt.setDate(dt.getDate() + 1); 
+             }
+          }
+          
+          if (novosConflitos.length > 0) {
+             // CORREÇÃO CRÍTICA: Impedir o ecrã "invisível"
+             setAgendamentosBons(novosBons); 
+             setFilaConflitos(novosConflitos); 
+             setIdxConflito(0); 
+             setDualExistente(novosConflitos[0].existente);
+             setDualNovo(novosConflitos[0].novo);
+             setMostrarForm(false);
+          } else {
+             for (const ag of novosBons) {
+                 const payloadSeguro = {
+                     pacienteId: String(ag.pacienteId || ''),
+                     paciente: String(ag.pacienteNome || ag.paciente || 'Paciente Sem Nome'),
+                     profissionalId: String(ag.profissionalId || ''),
+                     profissional: String(ag.profissionalNome || ag.profissional || 'Equipe'),
+                     local: String(ag.local || ''),
+                     data: String(ag.data || obterDataLocalISO(new Date())),
+                     hora: String(ag.hora || '08:00'),
+                     tipo: String(ag.tipo || 'Atendimento'),
+                     status: 'pendente',
+                     pacoteInfo: String(ag.pacoteInfo || '')
+                 };
+                 await addDoc(collection(db, "agendamentos"), payloadSeguro);
+             }
+             alert("Agendamento efetuado com sucesso!");
+             setMostrarForm(false);
+          }
+      } catch (error) {
+          console.error(error);
+          alert("Ocorreu um erro ao comunicar com a base de dados: " + error.message);
+      } finally {
+          setCarregandoIA(false);
       }
-      
-      if (novosConflitos.length > 0) {
-         setAgendamentosBons(novosBons); setFilaConflitos(novosConflitos); setIdxConflito(0); setMostrarForm(false);
-      } else {
-         await Promise.all(novosBons.map(ag => addDoc(collection(db, "agendamentos"), { ...ag, paciente: ag.pacienteNome, profissional: ag.profissionalNome, status: 'pendente' })));
-         alert("Agendamento efetuado com sucesso!");
-         setMostrarForm(false);
-      }
-      setCarregandoIA(false);
   };
 
   const resolverConflito = async (acao) => {
     setCarregandoIA(true);
-    if (acao === 'salvar') {
-        if (dualExistente && dualExistente.id) {
-            await updateDoc(doc(db, "agendamentos", dualExistente.id), { data: dualExistente.data, hora: dualExistente.hora, profissionalId: dualExistente.profissionalId, local: dualExistente.local });
+    try {
+        if (acao === 'salvar') {
+            if (dualExistente && dualExistente.id) {
+                await updateDoc(doc(db, "agendamentos", dualExistente.id), limparDadosParaFirestore({ 
+                    data: String(dualExistente.data), hora: String(dualExistente.hora), profissionalId: String(dualExistente.profissionalId), local: String(dualExistente.local) 
+                }));
+            }
+            setAgendamentosBons(prev => [...prev, dualNovo]);
         }
-        setAgendamentosBons(prev => [...prev, dualNovo]);
-    }
-    const prox = idxConflito + 1;
-    if (prox < filaConflitos.length) { setIdxConflito(prox); } 
-    else {
-        await Promise.all(agendamentosBons.map(ag => {
-            if (ag.isEdit) { const { originalId, isEdit, ...rest } = ag; return updateDoc(doc(db, "agendamentos", originalId), rest); } 
-            else { return addDoc(collection(db, "agendamentos"), { ...ag, paciente: ag.pacienteNome || ag.paciente, profissional: ag.profissionalNome || ag.profissional, status: 'pendente' }); }
-        }));
-        alert("Resolução concluída!"); setFilaConflitos([]); setAgendamentosBons([]);
+        
+        const prox = idxConflito + 1;
+        if (prox < filaConflitos.length) { 
+            // Avança para o próximo conflito sem fechar a janela
+            setIdxConflito(prox); 
+            setDualExistente(filaConflitos[prox].existente);
+            setDualNovo(filaConflitos[prox].novo);
+        } else {
+            // Grava tudo quando os conflitos acabam
+            for (const ag of agendamentosBons) {
+                if (ag.isEdit) { 
+                    const { originalId, isEdit, ...rest } = ag; 
+                    await updateDoc(doc(db, "agendamentos", originalId), {
+                       data: String(rest.data), hora: String(rest.hora), local: String(rest.local), profissionalId: String(rest.profissionalId)
+                    }); 
+                } else { 
+                    const payloadSeguro = {
+                        pacienteId: String(ag.pacienteId || ''),
+                        paciente: String(ag.pacienteNome || ag.paciente || 'Paciente'),
+                        profissionalId: String(ag.profissionalId || ''),
+                        profissional: String(ag.profissionalNome || ag.profissional || 'Equipe'),
+                        local: String(ag.local || ''),
+                        data: String(ag.data || ''),
+                        hora: String(ag.hora || ''),
+                        tipo: String(ag.tipo || 'Atendimento'),
+                        status: 'pendente',
+                        pacoteInfo: String(ag.pacoteInfo || '')
+                    };
+                    await addDoc(collection(db, "agendamentos"), payloadSeguro); 
+                }
+            }
+            alert("Resolução de lote concluída!"); 
+            setFilaConflitos([]); 
+            setDualExistente(null);
+            setDualNovo(null);
+            setAgendamentosBons([]);
+        }
+    } catch (error) {
+        alert("Falha ao resolver conflitos: " + error.message);
     }
     setCarregandoIA(false);
   };
@@ -310,8 +421,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                   </td>
                   {dias.map(dia => {
                     const iso = obterDataLocalISO(dia);
-                    
-                    // FILTRO: Não mostrar os cancelados na grelha da agenda!
                     const ags = agendamentos
                       .filter(a => a.data === iso && a.profissionalId === prof.id && a.status !== 'cancelado')
                       .sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
@@ -340,7 +449,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
         </div>
       </div>
 
-      {/* JANELA MODAL DE CANCELAMENTO / MOTIVO */}
       {modalCancelamento && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[130]">
           <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95">
@@ -366,7 +474,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
         </div>
       )}
 
-      {/* JANELA DE EXCLUSÃO EM LOTE (Abre ao clicar no erro de agendamento) */}
       {modalEscopo.open && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[120]">
           <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95">
@@ -386,7 +493,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
         </div>
       )}
 
-      {/* JANELA DE CONFLITOS DE AGENDA DUPLA */}
       {filaConflitos.length > 0 && dualExistente && dualNovo && (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
               <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl p-6 animate-in zoom-in-95 flex flex-col max-h-[95vh]">
@@ -395,7 +501,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                        <h3 className="text-xl font-black text-red-600 flex items-center gap-2"><AlertTriangle size={20}/> Conflito Detectado</h3>
                        <p className="text-slate-500 font-medium text-xs mt-1">Comparativo (Conflito {idxConflito + 1} de {filaConflitos.length})</p>
                      </div>
-                     <button onClick={() => { setFilaConflitos([]); setAgendamentosBons([]); }} className="p-2 bg-slate-50 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={18}/></button>
+                     <button onClick={() => { setFilaConflitos([]); setAgendamentosBons([]); setDualExistente(null); setDualNovo(null); }} className="p-2 bg-slate-50 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={18}/></button>
                   </div>
 
                   <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -442,7 +548,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
           </div>
       )}
 
-      {/* JANELA DE GERENCIAMENTO DE SESSÃO / CRIAR NOVO */}
       {mostrarForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -467,7 +572,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
              <form onSubmit={tentarSalvar} className="space-y-4">
                 <div>
                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Paciente</label>
-                   <select required className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-700 text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] transition-all" value={form.pacienteId} onChange={e => setForm({...form, pacienteId: e.target.value, pacienteNome: pacientes.find(p=>p.id===e.target.value)?.nome})}>
+                   <select required className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-700 text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] transition-all" value={form.pacienteId} onChange={e => { const pt = pacientes.find(p=>p.id===e.target.value); setForm({...form, pacienteId: e.target.value, pacienteNome: pt ? pt.nome : 'Paciente Sem Nome'}); }}>
                      <option value="">Selecionar Paciente...</option>
                      {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                    </select>
@@ -476,7 +581,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Profissional</label>
-                     <select required className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-700 text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] transition-all" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p.nome}); }}>
+                     <select required className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-700 text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] transition-all" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p ? p.nome : 'Profissional'}); }}>
                         <option value="">Fisioterapeuta...</option>
                         {profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                      </select>
@@ -524,7 +629,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                         </div>
                         
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Total de Sessões no Pacote</label>
-                        <input type="number" min="2" max="100" className="w-full p-4 rounded-2xl border-2 border-transparent outline-none focus:border-[#00A1FF] font-black text-slate-700 bg-white text-lg text-center shadow-sm" value={loteConfig.quantidade} onChange={e => setLoteConfig({...loteConfig, quantidade: parseInt(e.target.value)})}/>
+                        <input type="number" min="2" max="100" className="w-full p-4 rounded-2xl border-2 border-transparent outline-none focus:border-[#00A1FF] font-black text-slate-700 bg-white text-lg text-center shadow-sm" value={loteConfig.quantidade} onChange={e => setLoteConfig({...loteConfig, quantidade: parseInt(e.target.value) || 1})}/>
                      </div>
                    )}
                 </div>
