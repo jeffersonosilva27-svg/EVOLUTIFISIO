@@ -2,11 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
   Trash2, Edit3, DollarSign, Sparkles, Download, 
-  TrendingDown, History, Info, Loader2, FileText, CalendarClock
+  TrendingDown, History, Info, Loader2, FileText, CalendarClock, Dumbbell, Target
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { realizarAnaliseIAHistorico, transcreverExameIA } from '../services/geminiService';
+
+const GRUPOS_MUSCULARES = [
+  'Cervical', 'Ombros / Manguito', 'Dorsal / Escápulas', 'Peitoral', 
+  'Core / Abdômen', 'Lombar', 'Pelve / Quadril', 'Coxas / Isquiotibiais', 
+  'Joelhos', 'Panturrilhas / Tornozelos', 'Membros Superiores (Geral)'
+];
 
 export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [termoBusca, setTermoBusca] = useState('');
@@ -17,7 +23,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [evolucoes, setEvolucoes] = useState([]);
   const [novoSoap, setNovoSoap] = useState('');
   const [metricaPain, setMetricaPain] = useState(5); 
-  // NOVO ESTADO: Controla qual evolução está a ser editada
   const [editandoEvolucaoId, setEditandoEvolucaoId] = useState(null);
 
   const [editando, setEditando] = useState(null);
@@ -27,6 +32,10 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [carregandoIA, setCarregandoIA] = useState(false);
   const [exameProcessando, setExameProcessando] = useState(false);
   const [laudoExame, setLaudoExame] = useState('');
+
+  // ESTADOS DO PLANO DE TRATAMENTO
+  const [planoTratamento, setPlanoTratamento] = useState([]);
+  const [novoExercicio, setNovoExercicio] = useState({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
 
   const [novoPaciente, setNovoPaciente] = useState({
     nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: ''
@@ -108,63 +117,71 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     };
   };
 
+  // BUSCA EVOLUÇÕES E PLANO DE TRATAMENTO DO PACIENTE
   useEffect(() => {
     if (pacienteSelecionado) {
-      const q = query(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), orderBy("data", "desc"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const qEvo = query(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), orderBy("data", "desc"));
+      const unsubEvo = onSnapshot(qEvo, (snapshot) => {
         setEvolucoes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
+
+      const qPlano = query(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"));
+      const unsubPlano = onSnapshot(qPlano, (snapshot) => {
+        setPlanoTratamento(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+
       setLaudoExame('');
       setAnaliseIA('');
       setEditandoEvolucaoId(null);
       setNovoSoap('');
-      return () => unsubscribe();
+      
+      return () => { unsubEvo(); unsubPlano(); };
     }
   }, [pacienteSelecionado]);
 
-  // NOVA FUNÇÃO: Prepara a evolução para edição
   const iniciarEdicaoEvolucao = (evo) => {
     setNovoSoap(evo.texto);
     setMetricaPain(evo.metricaPain || 5);
     setEditandoEvolucaoId(evo.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Sobe a tela suavemente para a caixa de texto
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
-  // FUNÇÃO ATUALIZADA: Salva nova evolução OU atualiza a existente
   const salvarEvolucao = async () => {
     if (!novoSoap) return alert("Escreva algo antes de salvar.");
-    
     try {
       if (editandoEvolucaoId) {
-        // Atualiza a evolução existente
         await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), {
-          texto: novoSoap, 
-          metricaPain,
-          dataEdicao: new Date().toISOString() // Deixa um rastro de que foi editado
+          texto: novoSoap, metricaPain, dataEdicao: new Date().toISOString() 
         });
         alert("Evolução atualizada com sucesso!");
       } else {
-        // Cria uma nova evolução
         await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), {
-          texto: novoSoap, 
-          data: new Date().toISOString(), 
-          profissional: user?.name, 
-          metricaPain
+          texto: novoSoap, data: new Date().toISOString(), profissional: user?.name, metricaPain
         });
-        
-        // Se veio da Agenda, marca como realizado
         if (navParams?.atualizarStatusAgendamento) {
           await updateDoc(doc(db, "agendamentos", navParams.atualizarStatusAgendamento), { status: 'realizado' });
         }
         alert("Evolução guardada com sucesso!");
       }
-      
-      // Limpa os campos
-      setNovoSoap('');
-      setEditandoEvolucaoId(null);
-      setMetricaPain(5);
-    } catch (e) {
-      alert("Erro ao salvar evolução.");
+      setNovoSoap(''); setEditandoEvolucaoId(null); setMetricaPain(5);
+    } catch (e) { alert("Erro ao salvar evolução."); }
+  };
+
+  // FUNÇÕES DO PLANO DE TRATAMENTO
+  const adicionarExercicio = async (e) => {
+    e.preventDefault();
+    if(!novoExercicio.musculo || !novoExercicio.nome) return alert("Preencha o Músculo e o Exercício.");
+    try {
+      await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"), {
+        ...novoExercicio, dataInclusao: new Date().toISOString(), profissional: user?.name || 'Equipe'
+      });
+      setNovoExercicio({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
+    } catch (e) { alert("Erro ao adicionar exercício."); }
+  };
+
+  const removerExercicio = async (id) => {
+    if(window.confirm("Remover este exercício do plano?")) {
+      await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
     }
   };
 
@@ -172,7 +189,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
   const abasDisponiveis = [
     { id: 'historico', icon: History, label: 'Histórico Clínico', restrito: false },
-    { id: 'financeiro', icon: DollarSign, label: 'Financeiro Pessoal', restrito: true },
+    { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restrito: false },
+    { id: 'financeiro', icon: DollarSign, label: 'Financeiro', restrito: true },
     { id: 'dados', icon: Info, label: 'Arquivos e Exames', restrito: false },
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restrito: false }
   ];
@@ -182,6 +200,22 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
        .filter(e => e.metricaPain !== undefined && e.metricaPain !== null)
        .reverse()
        .slice(-10);
+
+    // Agrupa os exercícios do plano por Músculo para visualização organizada
+    const planoAgrupado = GRUPOS_MUSCULARES.reduce((acc, musculo) => {
+        const exs = planoTratamento.filter(e => e.musculo === musculo);
+        if(exs.length > 0) acc[musculo] = exs;
+        return acc;
+    }, {});
+    
+    // Captura os exercícios que podem ter um músculo fora da lista padrão (prevenção de bugs)
+    const musculosUsados = [...new Set(planoTratamento.map(e => e.musculo))];
+    musculosUsados.forEach(m => {
+        if(!GRUPOS_MUSCULARES.includes(m)) {
+            const exs = planoTratamento.filter(e => e.musculo === m);
+            if(exs.length > 0) planoAgrupado[m] = exs;
+        }
+    });
 
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 pb-20">
@@ -234,7 +268,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                  </div>
              ) : (
                  <div className="flex items-center justify-center h-12 border-2 border-dashed border-slate-700 rounded-xl">
-                    <span className="text-xs font-bold text-slate-500">Nenhum dado de dor registrado.</span>
+                    <span className="text-xs font-bold text-slate-500">Nenhum dado registrado.</span>
                  </div>
              )}
              <p className="mt-4 text-xs font-bold text-blue-300 flex items-center"><TrendingDown size={14} className="mr-1"/> Gráfico Cronológico</p>
@@ -289,8 +323,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                         <p className="text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">{evo.texto}</p>
                         {evo.metricaPain !== undefined && <div className="text-red-500 font-black text-lg bg-red-50 px-3 py-1 rounded-xl h-fit">EVA {evo.metricaPain}</div>}
                       </div>
-                      
-                      {/* O NOVO CARIMBO DE DATA */}
                       <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-t border-slate-100 pt-4 mt-2">
                         <div className="flex items-center gap-2">
                            <CalendarClock size={14} className="text-slate-300"/>
@@ -299,9 +331,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                            </span>
                            {evo.dataEdicao && <span className="italic text-slate-300 ml-2">(Editado)</span>}
                         </div>
-                        
                         <div className="flex items-center gap-4">
-                           {/* BOTÃO DE EDITAR A EVOLUÇÃO */}
                            <button onClick={() => iniciarEdicaoEvolucao(evo)} className="text-blue-500 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg transition-colors">
                              <Edit3 size={12}/> Editar
                            </button>
@@ -310,9 +340,84 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                       </div>
                     </div>
                   ))}
-                  {evolucoes.length === 0 && <p className="text-center text-slate-400 font-bold p-10">Nenhum histórico encontrado para este paciente.</p>}
+                  {evolucoes.length === 0 && <p className="text-center text-slate-400 font-bold p-10">Nenhum histórico encontrado.</p>}
                </div>
             </div>
+          )}
+
+          {/* NOVA ABA: PLANO DE TRATAMENTO */}
+          {tabAtiva === 'plano' && (
+             <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+                   <h3 className="font-black text-slate-800 mb-6 flex items-center"><Target className="text-blue-600 mr-2"/> Prescrição de Exercícios</h3>
+                   
+                   <form onSubmit={adicionarExercicio} className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                         <div className="md:col-span-1">
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Foco Muscular</label>
+                           <select required className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-700 text-sm" value={novoExercicio.musculo} onChange={e => setNovoExercicio({...novoExercicio, musculo: e.target.value})}>
+                              <option value="">Selecione...</option>
+                              {GRUPOS_MUSCULARES.map(m => <option key={m} value={m}>{m}</option>)}
+                           </select>
+                         </div>
+                         <div className="md:col-span-2">
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Exercício / Aparelho</label>
+                           <input required type="text" placeholder="Ex: Supino Reto com Halteres" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-700 text-sm" value={novoExercicio.nome} onChange={e => setNovoExercicio({...novoExercicio, nome: e.target.value})}/>
+                         </div>
+                         <div className="md:col-span-1">
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Carga (kg / cor)</label>
+                           <input type="text" placeholder="Ex: 10kg ou Fita Azul" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-700 text-sm" value={novoExercicio.carga} onChange={e => setNovoExercicio({...novoExercicio, carga: e.target.value})}/>
+                         </div>
+                      </div>
+                      
+                      <div className="flex gap-4 mt-4 items-center">
+                         <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border border-slate-200">
+                           <label className="text-xs font-bold text-slate-500">Séries:</label>
+                           <input type="number" min="1" className="w-12 text-center font-black outline-none bg-transparent" value={novoExercicio.series} onChange={e => setNovoExercicio({...novoExercicio, series: e.target.value})}/>
+                         </div>
+                         <span className="text-slate-400 font-black">X</span>
+                         <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border border-slate-200">
+                           <label className="text-xs font-bold text-slate-500">Reps/Tempo:</label>
+                           <input type="text" className="w-16 text-center font-black outline-none bg-transparent" value={novoExercicio.reps} onChange={e => setNovoExercicio({...novoExercicio, reps: e.target.value})}/>
+                         </div>
+                         
+                         <button type="submit" className="ml-auto bg-blue-600 text-white px-6 py-2.5 rounded-xl font-black hover:bg-blue-700 transition-colors shadow-md text-sm">Adicionar ao Plano</button>
+                      </div>
+                   </form>
+
+                   {Object.keys(planoAgrupado).length > 0 ? (
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {Object.entries(planoAgrupado).map(([musculo, exercicios]) => (
+                             <div key={musculo} className="bg-white border-2 border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                                <div className="bg-slate-50 border-b border-slate-100 p-3 flex justify-between items-center">
+                                   <h4 className="font-black text-slate-700 text-sm uppercase tracking-wide">{musculo}</h4>
+                                   <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-md">{exercicios.length} exer.</span>
+                                </div>
+                                <ul className="divide-y divide-slate-50">
+                                   {exercicios.map(ex => (
+                                      <li key={ex.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-start group">
+                                         <div>
+                                            <p className="font-bold text-slate-800 leading-tight">{ex.nome}</p>
+                                            <div className="flex items-center gap-3 mt-2 text-xs font-bold text-slate-500">
+                                               {ex.carga && <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-100">Carga: {ex.carga}</span>}
+                                               <span>{ex.series} séries de {ex.reps}</span>
+                                            </div>
+                                         </div>
+                                         <button onClick={() => removerExercicio(ex.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1"><Trash2 size={16}/></button>
+                                      </li>
+                                   ))}
+                                </ul>
+                             </div>
+                          ))}
+                       </div>
+                   ) : (
+                       <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                          <Dumbbell size={40} className="mx-auto text-slate-300 mb-3"/>
+                          <p className="font-bold text-slate-500">Nenhum exercício prescrito para este paciente.</p>
+                       </div>
+                   )}
+                </div>
+             </div>
           )}
 
           {tabAtiva === 'financeiro' && hasAccess(['gestor_clinico', 'admin_fin']) && (

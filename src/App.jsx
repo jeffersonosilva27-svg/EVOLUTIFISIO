@@ -2,7 +2,7 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -23,7 +23,7 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
           <h1 className="text-3xl font-black text-red-600 mb-2">Erro de Interface</h1>
           <pre className="bg-white p-6 rounded-2xl border border-red-200 text-red-800 text-xs mb-4">{this.state.error?.toString()}</pre>
           <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="bg-red-600 text-white px-8 py-3 rounded-xl font-bold">Limpar e Recarregar</button>
@@ -39,19 +39,44 @@ const obterDataLocalISO = (data) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+const getMinutos = (horaStr) => {
+  if (!horaStr) return 0;
+  const p = horaStr.split(':');
+  return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+};
+
 function MainApp() {
   const [user, setUser] = useState(() => {
     try {
-      const salvo = localStorage.getItem('evoluti_user');
-      return salvo ? JSON.parse(salvo) : null;
+      let salvo = sessionStorage.getItem('evoluti_user');
+      if (salvo) return JSON.parse(salvo);
+
+      salvo = localStorage.getItem('evoluti_user');
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+          localStorage.removeItem('evoluti_user'); 
+          return null; 
+        }
+        return parsed; 
+      }
+      return null;
     } catch (e) { return null; }
   }); 
 
+  const [authMode, setAuthMode] = useState('login'); 
+  const [lembrarMe, setLembrarMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  const [cadNome, setCadNome] = useState('');
+  const [cadProfissao, setCadProfissao] = useState('');
+  const [cadRegistro, setCadRegistro] = useState('');
+  const [cadEmail, setCadEmail] = useState('');
+  const [cadSenha, setCadSenha] = useState('');
+
   const [currentView, setCurrentView] = useState('dashboard'); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const [navParams, setNavParams] = useState(null);
-  
   const [pacientes, setPacientes] = useState([]);
   const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
 
@@ -69,18 +94,52 @@ function MainApp() {
     try {
       const q = query(collection(db, "profissionais"), where("email", "==", email));
       const snap = await getDocs(q);
+      
       if (!snap.empty) {
-        // CORREÇÃO 1: Garante que a propriedade "name" existe sempre no perfil lido!
         const docData = snap.docs[0].data();
         const userData = { id: snap.docs[0].id, name: docData.nome || docData.name || 'Equipe', ...docData };
         
-        if (userData.senhaProvisoria === senha || userData.senhaReal === senha) {
+        if (userData.status === 'pendente') {
+          alert("O seu cadastro ainda está em análise pelo gestor da clínica.");
+        } else if (userData.senhaProvisoria === senha || userData.senhaReal === senha) {
           setUser(userData);
-          localStorage.setItem('evoluti_user', JSON.stringify(userData));
+          if (lembrarMe) {
+             const expireTime = Date.now() + (30 * 60 * 1000); 
+             localStorage.setItem('evoluti_user', JSON.stringify({...userData, expiresAt: expireTime}));
+          } else {
+             sessionStorage.setItem('evoluti_user', JSON.stringify(userData));
+          }
         } else { alert("Senha incorreta."); }
-      } else { alert("Usuário não encontrado."); }
+      } else { alert("Utilizador não encontrado."); }
     } catch (error) { alert("Erro de conexão."); }
     setLoading(false);
+  };
+
+  const solicitarCadastro = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const q = query(collection(db, "profissionais"), where("email", "==", cadEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        alert("Este e-mail já possui um pedido de acesso ativo.");
+        setLoading(false); return;
+      }
+      await addDoc(collection(db, "profissionais"), {
+        nome: cadNome, categoriaBase: cadProfissao, registro: cadRegistro, email: cadEmail,
+        senhaProvisoria: cadSenha, precisaTrocarSenha: true, status: 'pendente', role: 'pendente', dataCadastro: new Date().toISOString()
+      });
+      alert("Sucesso! O seu pedido de acesso foi enviado ao Gestor Clínico.");
+      setAuthMode('login');
+      setCadNome(''); setCadProfissao(''); setCadRegistro(''); setCadEmail(''); setCadSenha('');
+    } catch (error) { alert("Erro ao enviar pedido."); }
+    setLoading(false);
+  };
+
+  const fazerLogout = () => {
+    localStorage.removeItem('evoluti_user');
+    sessionStorage.removeItem('evoluti_user');
+    window.location.reload();
   };
 
   useEffect(() => {
@@ -109,27 +168,37 @@ function MainApp() {
   const renderDashboard = () => {
     const hojeIso = obterDataLocalISO(new Date());
     const agora = new Date();
-    const horaAtualStr = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+    const minutosAtuais = agora.getHours() * 60 + agora.getMinutes();
 
-    let agendaHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado');
+    const agendaGeralHoje = agendamentosGlobais
+        .filter(a => a.data === hojeIso && a.status !== 'cancelado')
+        .sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
+        
+    const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
+
+    const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente');
+    const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
     
-    if (user.role !== 'gestor_clinico' && user.role !== 'recepcao') {
-        agendaHoje = agendaHoje.filter(a => a.profissionalId === user.id);
+    let proximoEstaAtrasado = false;
+    if (proximoAtendimento) {
+        proximoEstaAtrasado = getMinutos(proximoAtendimento.hora) < minutosAtuais;
     }
 
-    agendaHoje.sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
+    const agendaMetricas = user.role === 'gestor_clinico' ? agendaGeralHoje : minhaAgendaHoje;
+    const totalMetricas = agendaMetricas.length;
+    const realizadasMetricas = agendaMetricas.filter(a => a.status === 'realizado').length;
+    const atrasadasMetricas = agendaMetricas.filter(a => {
+        if (a.status === 'realizado') return false;
+        return getMinutos(a.hora) < minutosAtuais;
+    }).length;
 
-    const sessoesRealizadas = agendaHoje.filter(a => a.status === 'realizado').length;
-    const sessoesPendentes = agendaHoje.filter(a => a.status === 'pendente').length;
-    const totalHoje = agendaHoje.length;
-
-    const proximos = agendaHoje.filter(a => a.status === 'pendente' && a.hora >= horaAtualStr);
-    const proximoAtendimento = proximos.length > 0 ? proximos[0] : null;
-
-    // CORREÇÃO 2: Extrator seguro de primeiro nome
+    const rotuloMetricas = user.role === 'gestor_clinico' ? 'Sessões da Clínica Hoje' : 'Suas Sessões Hoje';
     const primeiroNomeUsuario = (user?.name || user?.nome || 'Equipe').split(' ')[0];
 
     if (user.role === 'recepcao') {
+        const sessoesPendentesGeral = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
+        const sessoesRealizadasGeral = agendaGeralHoje.filter(a => a.status === 'realizado').length;
+        
         return (
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
@@ -138,17 +207,17 @@ function MainApp() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-blue-600 text-white rounded-[32px] p-8 shadow-xl">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 mb-2">Total de Agendamentos (Hoje)</p>
-                        <h3 className="text-5xl font-black">{totalHoje}</h3>
-                        <p className="text-xs font-bold text-blue-100 mt-4">Na clínica inteira</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 mb-2">Total de Agendamentos</p>
+                        <h3 className="text-5xl font-black">{agendaGeralHoje.length}</h3>
+                        <p className="text-xs font-bold text-blue-100 mt-4">Sessões marcadas para hoje</p>
                     </div>
                     <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando Atendimento</p>
-                        <h3 className="text-4xl font-black text-slate-800">{sessoesPendentes}</h3>
+                        <h3 className="text-4xl font-black text-slate-800">{sessoesPendentesGeral}</h3>
                     </div>
                     <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sessões Finalizadas</p>
-                        <h3 className="text-4xl font-black text-slate-800">{sessoesRealizadas}</h3>
+                        <h3 className="text-4xl font-black text-slate-800">{sessoesRealizadasGeral}</h3>
                     </div>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
@@ -174,22 +243,22 @@ function MainApp() {
                     <div className="relative z-10 flex flex-col h-full justify-between">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2 mb-4">
-                                <Clock size={14}/> O Seu Próximo Paciente
+                                <Clock size={14}/> Seu Próximo Paciente
                             </p>
                             {proximoAtendimento ? (
                                 <>
                                     <h2 className="text-4xl md:text-5xl font-black mb-2">{proximoAtendimento.paciente}</h2>
                                     <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                        <span className="bg-blue-600 text-white px-3 py-1 rounded-xl font-black text-sm">{proximoAtendimento.hora}</span>
+                                        <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse' : 'bg-blue-600 text-white'}`}>
+                                            {proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}
+                                        </span>
                                         <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300">{proximoAtendimento.local}</span>
-                                        {/* CORREÇÃO 3: Extrator seguro do nome do profissional */}
-                                        {user.role === 'gestor_clinico' && <span className="text-sm font-bold text-slate-400 ml-2">com {(proximoAtendimento.profissional || proximoAtendimento.profissionalNome || 'Equipe').split(' ')[0]}</span>}
                                     </p>
                                 </>
                             ) : (
                                 <div>
                                     <h2 className="text-3xl font-black mb-2 text-slate-400">Nenhum paciente na fila.</h2>
-                                    <p className="text-slate-500 font-medium">A sua agenda para o resto do dia está livre.</p>
+                                    <p className="text-slate-500 font-medium">Você concluiu todos os seus atendimentos de hoje!</p>
                                 </div>
                             )}
                         </div>
@@ -209,17 +278,17 @@ function MainApp() {
 
                 <div className="flex flex-col gap-6">
                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> Pacientes Hoje</p>
-                        <h3 className="text-4xl font-black text-slate-800">{totalHoje}</h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> {rotuloMetricas}</p>
+                        <h3 className="text-4xl font-black text-slate-800">{totalMetricas}</h3>
                         <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
-                            <div className="bg-blue-600 h-full rounded-full" style={{ width: `${totalHoje > 0 ? (sessoesRealizadas / totalHoje) * 100 : 0}%` }}></div>
+                            <div className="bg-blue-600 h-full rounded-full transition-all" style={{ width: `${totalMetricas > 0 ? (realizadasMetricas / totalMetricas) * 100 : 0}%` }}></div>
                         </div>
-                        <p className="text-xs font-bold text-slate-400 mt-2">{sessoesRealizadas} concluídos de {totalHoje}</p>
+                        <p className="text-xs font-bold text-slate-400 mt-2">{realizadasMetricas} concluídos de {totalMetricas}</p>
                     </div>
 
                     <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center">
                         <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
-                        <h3 className="text-4xl font-black text-blue-700">{agendaHoje.filter(a => a.status === 'pendente' && a.hora < horaAtualStr).length}</h3>
+                        <h3 className="text-4xl font-black text-blue-700">{atrasadasMetricas}</h3>
                         <p className="text-xs font-bold text-blue-600/70 mt-2">Sessões atrasadas sem assinatura</p>
                     </div>
                 </div>
@@ -230,19 +299,91 @@ function MainApp() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-[#fdfbff]">
-        <div className="max-w-md w-full m3-card border border-slate-200 overflow-hidden !p-0 shadow-2xl">
-          <div className="bg-[#005ac1] p-10 text-center text-white">
-            <HeartPulse size={48} className="mx-auto mb-4 animate-pulse" />
-            <h1 className="text-3xl font-black uppercase">EVOLUTI FISIO</h1>
-          </div>
-          <form onSubmit={realizarLogin} className="p-8 space-y-5">
-            <input name="email" required type="email" placeholder="E-mail" className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold" />
-            <input name="senha" required type="password" placeholder="Senha" className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold" />
-            <button disabled={loading} className="w-full bg-[#005ac1] text-white py-4 rounded-full font-black text-lg shadow-lg">
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Acessar Plataforma'}
-            </button>
-          </form>
+      <div className="min-h-screen flex bg-slate-50">
+        <div className="hidden lg:flex flex-col justify-center w-1/2 bg-[#001a41] p-16 text-white relative overflow-hidden">
+           <div className="relative z-10 max-w-lg">
+              <div className="flex items-center gap-3 mb-8">
+                <HeartPulse size={48} className="text-blue-400" />
+                <span className="text-3xl font-black tracking-tight">EVOLUTI</span>
+              </div>
+              <h1 className="text-5xl font-black leading-tight mb-6">Gestão Clínica Inteligente.</h1>
+              <p className="text-lg text-blue-200 font-medium leading-relaxed">
+                Organize a sua agenda, escreva evoluções guiadas por Inteligência Artificial e controle o fluxo de caixa num único ecrã.
+              </p>
+           </div>
+           <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-blue-600 rounded-full blur-[150px] opacity-20"></div>
+           <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-indigo-500 rounded-full blur-[120px] opacity-20"></div>
+        </div>
+
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative">
+           <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2 text-[#001a41]">
+              <HeartPulse size={28} className="text-blue-600" />
+              <span className="text-xl font-black tracking-tight">EVOLUTI</span>
+           </div>
+
+           <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700">
+             {authMode === 'login' ? (
+                 <>
+                   <div className="mb-10 text-center lg:text-left mt-10 lg:mt-0">
+                     <h2 className="text-3xl font-black text-slate-900">Bem-vindo de volta!</h2>
+                     <p className="text-slate-500 font-medium mt-2">Insira as suas credenciais para aceder ao sistema.</p>
+                   </div>
+                   <form onSubmit={realizarLogin} className="space-y-5">
+                     <div>
+                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">E-mail Profissional</label>
+                       <input name="email" required type="email" placeholder="nome@clinica.com" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-50 font-bold text-slate-800 transition-all shadow-sm" />
+                     </div>
+                     <div>
+                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Palavra-passe</label>
+                       <input name="senha" required type="password" placeholder="••••••••" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-50 font-bold text-slate-800 transition-all shadow-sm" />
+                     </div>
+                     <div className="flex items-center justify-between pt-2">
+                       <label className="flex items-center gap-2 cursor-pointer group">
+                         <div className="relative flex items-center justify-center w-5 h-5 rounded border-2 border-slate-300 group-hover:border-blue-500 transition-colors">
+                           <input type="checkbox" className="opacity-0 absolute w-full h-full cursor-pointer" checked={lembrarMe} onChange={e => setLembrarMe(e.target.checked)} />
+                           {lembrarMe && <CheckCircle2 size={14} className="text-blue-600 absolute pointer-events-none" />}
+                         </div>
+                         <span className="text-sm font-bold text-slate-600 group-hover:text-slate-900 transition-colors">Lembrar-me (30 min)</span>
+                       </label>
+                       <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1"><Lock size={10}/> Ambiente Seguro</span>
+                     </div>
+                     <button disabled={loading} className="w-full bg-[#005ac1] text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all shadow-lg hover:shadow-blue-200 mt-4 flex items-center justify-center">
+                       {loading ? <Loader2 className="animate-spin" /> : 'Acessar Plataforma'}
+                     </button>
+                   </form>
+                   <div className="mt-10 text-center border-t border-slate-200 pt-6">
+                      <p className="text-sm text-slate-500 font-medium">Novo na equipa clínica?</p>
+                      <button onClick={() => setAuthMode('cadastro')} className="mt-2 text-blue-600 font-black hover:text-blue-800 transition-colors">Solicitar Acesso ao Gestor</button>
+                   </div>
+                 </>
+             ) : (
+                 <>
+                   <div className="mb-8 text-center lg:text-left mt-10 lg:mt-0">
+                     <button onClick={() => setAuthMode('login')} className="mb-4 text-sm font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1 lg:justify-start justify-center mx-auto lg:mx-0"><ChevronLeft size={16}/> Voltar ao Login</button>
+                     <h2 className="text-3xl font-black text-slate-900">Solicitar Acesso</h2>
+                     <p className="text-slate-500 font-medium mt-2 text-sm">O seu pedido será revisto pelo Gestor Clínico.</p>
+                   </div>
+                   <form onSubmit={solicitarCadastro} className="space-y-4">
+                     <input required type="text" placeholder="Nome Completo" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadNome} onChange={e => setCadNome(e.target.value)} />
+                     <div className="grid grid-cols-2 gap-3">
+                       <select required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadProfissao} onChange={e => setCadProfissao(e.target.value)}>
+                         <option value="">Profissão...</option>
+                         <option value="fisio">Fisioterapeuta</option>
+                         <option value="to">Ter. Ocupacional</option>
+                         <option value="recepcao">Recepção</option>
+                       </select>
+                       <input required type="text" placeholder="Nº de Registro" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadRegistro} onChange={e => setCadRegistro(e.target.value)} />
+                     </div>
+                     <input required type="email" placeholder="E-mail Profissional" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadEmail} onChange={e => setCadEmail(e.target.value)} />
+                     <input required type="password" placeholder="Defina uma Senha" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-600 font-bold text-slate-800 text-sm shadow-sm" value={cadSenha} onChange={e => setCadSenha(e.target.value)} />
+                     
+                     <button disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black mt-2 hover:bg-black transition-all flex justify-center shadow-lg">
+                       {loading ? <Loader2 className="animate-spin" /> : 'Enviar Solicitação Segura'}
+                     </button>
+                   </form>
+                 </>
+             )}
+           </div>
         </div>
       </div>
     );
@@ -250,32 +391,19 @@ function MainApp() {
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff]">
-      
-      <aside 
-        onMouseEnter={() => setIsSidebarOpen(true)}
-        onMouseLeave={() => setIsSidebarOpen(false)}
-        className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'}`}
-      >
+      <aside onMouseEnter={() => setIsSidebarOpen(true)} onMouseLeave={() => setIsSidebarOpen(false)} className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'}`}>
         <div className="p-6 flex justify-center text-[#005ac1] shrink-0">
           <HeartPulse size={32} className="animate-pulse" />
         </div>
-
         <nav className="flex-1 px-2 space-y-4 mt-4 overflow-y-auto custom-scrollbar">
           {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button 
-              key={item.id} 
-              onClick={() => navegarPara(item.id)} 
-              className={`w-full flex flex-col items-center justify-center p-3 rounded-2xl transition-all gap-1 ${currentView === item.id ? 'bg-[#d8e2ff] text-[#001a41]' : 'text-slate-500 hover:bg-[#ece7ed]'}`}
-            >
+            <button key={item.id} onClick={() => navegarPara(item.id)} className={`w-full flex flex-col items-center justify-center p-3 rounded-2xl transition-all gap-1 ${currentView === item.id ? 'bg-[#d8e2ff] text-[#001a41]' : 'text-slate-500 hover:bg-[#ece7ed]'}`}>
               <item.icon size={currentView === item.id ? 28 : 24} className={currentView === item.id ? 'text-[#005ac1]' : ''} />
-              <span className={`text-[10px] font-black uppercase tracking-tighter transition-opacity duration-300 ${!isSidebarOpen ? 'opacity-0 h-0' : 'opacity-100'}`}>
-                {item.label}
-              </span>
+              <span className={`text-[10px] font-black uppercase tracking-tighter transition-opacity duration-300 ${!isSidebarOpen ? 'opacity-0 h-0' : 'opacity-100'}`}>{item.label}</span>
             </button>
           ))}
         </nav>
-
-        <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="p-6 text-red-400 hover:text-red-600 flex flex-col items-center gap-1">
+        <button onClick={fazerLogout} className="p-6 text-red-400 hover:text-red-600 flex flex-col items-center gap-1">
           <LogOut size={20}/>
           {isSidebarOpen && <span className="text-[9px] font-black uppercase">Sair</span>}
         </button>
@@ -286,12 +414,15 @@ function MainApp() {
            <span className="font-black text-blue-600 uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                {/* CORREÇÃO 4: Mostra nome de forma segura */}
                 <p className="text-xs font-black leading-none">{user?.name || user?.nome || 'Equipe'}</p>
                 <p className="text-[9px] text-blue-500 font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p>
               </div>
-              {/* CORREÇÃO 5: Inicial do nome segura */}
               <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
+              
+              {/* O NOVO BOTÃO DE SAIR NO MOBILE FICA AQUI! */}
+              <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:text-red-600 bg-red-50 rounded-full ml-1" title="Sair da Conta">
+                 <LogOut size={18}/>
+              </button>
            </div>
         </header>
 
@@ -309,14 +440,8 @@ function MainApp() {
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-200 flex justify-around items-center h-20 px-2 z-[60] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
          {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button 
-              key={item.id} 
-              onClick={() => navegarPara(item.id)} 
-              className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-blue-600 scale-110' : 'text-slate-400'}`}
-            >
-              <div className={`p-2 rounded-xl transition-all ${currentView === item.id ? 'bg-blue-50' : ''}`}>
-                <item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} />
-              </div>
+            <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-blue-600 scale-110' : 'text-slate-400'}`}>
+              <div className={`p-2 rounded-xl transition-all ${currentView === item.id ? 'bg-blue-50' : ''}`}><item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} /></div>
               <span className="text-[10px] font-bold">{item.label}</span>
             </button>
          ))}
