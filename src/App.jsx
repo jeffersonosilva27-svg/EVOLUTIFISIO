@@ -2,7 +2,7 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap, Smartphone, MapPin, User
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap, User, MapPin, Smartphone
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -290,19 +290,21 @@ function MainApp() {
     const ultimosExercicios = meusExercicios.slice(0, 6);
 
     // =========================================================================
-    // NOVO PAINEL DA RECEPÇÃO (COM LISTA DE PACIENTES DO DIA)
+    // NOVO PAINEL DA RECEPÇÃO RESTAURADO (COM LISTA DE PACIENTES DO DIA)
     // =========================================================================
-    if (user.role === 'recepcao') {
+    if (user.role === 'recepcao' || user.role === 'recepcionista') {
         const sessoesPendentesGeral = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
         const sessoesRealizadasGeral = agendaGeralHoje.filter(a => a.status === 'realizado').length;
+        const taxaConclusao = agendaGeralHoje.length > 0 ? Math.round((sessoesRealizadasGeral / agendaGeralHoje.length) * 100) : 0;
         
         return (
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
                   <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel da Recepção</h1>
-                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Aqui está a sua visão de controlo de hoje.</p>
+                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Aqui está o controlo de pacientes de hoje.</p>
                 </div>
                 
+                {/* CARTÕES DE INSIGHTS DA RECEPÇÃO */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-[#00A1FF] text-white rounded-[32px] p-8 shadow-xl relative overflow-hidden">
                         <div className="relative z-10">
@@ -312,19 +314,25 @@ function MainApp() {
                         </div>
                         <Calendar className="absolute -right-6 -bottom-6 text-white/20 w-32 h-32" />
                     </div>
-                    <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando/Pendentes</p>
+                    
+                    <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm flex flex-col justify-center">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando / Atrasados</p>
                         <h3 className="text-4xl font-black text-[#0F214A]">{sessoesPendentesGeral}</h3>
-                        <p className="text-xs font-bold text-slate-400 mt-4">Pacientes por atender hoje</p>
+                        <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
+                            <div className="bg-amber-400 h-full rounded-full transition-all" style={{ width: `${agendaGeralHoje.length > 0 ? (sessoesPendentesGeral / agendaGeralHoje.length) * 100 : 0}%` }}></div>
+                        </div>
+                        <p className="text-xs font-bold text-slate-400 mt-2">Pacientes por atender hoje</p>
                     </div>
-                    <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sessões Finalizadas</p>
-                        <h3 className="text-4xl font-black text-[#0F214A]">{sessoesRealizadasGeral}</h3>
-                        <p className="text-xs font-bold text-slate-400 mt-4">Atendimentos já concluídos</p>
+
+                    <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm flex flex-col justify-center">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Taxa de Conclusão</p>
+                        <h3 className="text-4xl font-black text-[#0F214A]">{taxaConclusao}%</h3>
+                        <p className="text-xs font-bold text-slate-400 mt-4">{sessoesRealizadasGeral} de {agendaGeralHoje.length} sessões concluídas</p>
                     </div>
                 </div>
 
-                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
+                {/* TABELA DE PACIENTES DO DIA */}
+                <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-black text-[#0F214A] flex items-center gap-2">
                             <Users className="text-[#00A1FF]"/> Controle de Fluxo Diário (Recepção)
@@ -352,8 +360,8 @@ function MainApp() {
                                                 <td className="p-4">
                                                     <span className={`px-3 py-1.5 rounded-xl font-black text-sm ${
                                                         ag.status === 'realizado' ? 'bg-green-100 text-green-700' 
-                                                        : isAtrasado ? 'bg-red-100 text-red-600' 
-                                                        : 'bg-blue-100 text-blue-700'
+                                                        : isAtrasado ? 'bg-amber-100 text-amber-700' 
+                                                        : 'bg-blue-100 text-[#00A1FF]'
                                                     }`}>
                                                         {ag.hora}
                                                     </span>
@@ -377,7 +385,7 @@ function MainApp() {
                                                 <td className="p-4 text-right">
                                                     {pac?.whatsapp ? (
                                                         <a href={`https://wa.me/55${pac.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 bg-slate-50 hover:bg-green-50 text-slate-600 hover:text-green-600 border border-slate-200 px-4 py-2 rounded-xl text-xs font-black transition-colors shadow-sm">
-                                                            <Smartphone size={14}/> Ligar / Zap
+                                                            <Smartphone size={14}/> Zap
                                                         </a>
                                                     ) : (
                                                         <span className="text-xs font-bold text-slate-400">Sem contato</span>
@@ -400,6 +408,9 @@ function MainApp() {
         );
     }
 
+    // =========================================================================
+    // PAINEL CLÍNICO (GESTOR, FISIO E TO)
+    // =========================================================================
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div>
