@@ -2,7 +2,7 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap, Smartphone, MapPin, User
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -289,6 +289,9 @@ function MainApp() {
     const meusExercicios = user.role === 'gestor_clinico' ? exerciciosGlobais : exerciciosGlobais.filter(e => e.profissional === user.name);
     const ultimosExercicios = meusExercicios.slice(0, 6);
 
+    // =========================================================================
+    // NOVO PAINEL DA RECEPÇÃO (COM LISTA DE PACIENTES DO DIA)
+    // =========================================================================
     if (user.role === 'recepcao') {
         const sessoesPendentesGeral = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
         const sessoesRealizadasGeral = agendaGeralHoje.filter(a => a.status === 'realizado').length;
@@ -297,22 +300,101 @@ function MainApp() {
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
                   <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel da Recepção</h1>
-                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Aqui está o resumo de hoje.</p>
+                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Aqui está a sua visão de controlo de hoje.</p>
                 </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-[#00A1FF] text-white rounded-[32px] p-8 shadow-xl">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-2">Total de Agendamentos</p>
-                        <h3 className="text-5xl font-black">{agendaGeralHoje.length}</h3>
-                        <p className="text-xs font-bold text-blue-50 mt-4">Sessões marcadas para hoje</p>
+                    <div className="bg-[#00A1FF] text-white rounded-[32px] p-8 shadow-xl relative overflow-hidden">
+                        <div className="relative z-10">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-2">Agendamentos Totais</p>
+                            <h3 className="text-5xl font-black">{agendaGeralHoje.length}</h3>
+                            <p className="text-xs font-bold text-blue-50 mt-4">Atendimentos marcados hoje</p>
+                        </div>
+                        <Calendar className="absolute -right-6 -bottom-6 text-white/20 w-32 h-32" />
                     </div>
                     <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando Atendimento</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando/Pendentes</p>
                         <h3 className="text-4xl font-black text-[#0F214A]">{sessoesPendentesGeral}</h3>
+                        <p className="text-xs font-bold text-slate-400 mt-4">Pacientes por atender hoje</p>
                     </div>
                     <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Sessões Finalizadas</p>
                         <h3 className="text-4xl font-black text-[#0F214A]">{sessoesRealizadasGeral}</h3>
+                        <p className="text-xs font-bold text-slate-400 mt-4">Atendimentos já concluídos</p>
                     </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-xl font-black text-[#0F214A] flex items-center gap-2">
+                            <Users className="text-[#00A1FF]"/> Controle de Fluxo Diário (Recepção)
+                        </h3>
+                    </div>
+
+                    {agendaGeralHoje.length > 0 ? (
+                        <div className="overflow-x-auto custom-scrollbar">
+                            <table className="w-full text-left min-w-[700px]">
+                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+                                    <tr>
+                                        <th className="p-4">Hora</th>
+                                        <th className="p-4">Paciente</th>
+                                        <th className="p-4">Profissional</th>
+                                        <th className="p-4">Local</th>
+                                        <th className="p-4 text-right">Contato Rápido</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {agendaGeralHoje.map(ag => {
+                                        const isAtrasado = (!ag.status || ag.status === 'pendente') && getMinutos(ag.hora) < minutosAtuais;
+                                        const pac = pacientes.find(p => p.id === ag.pacienteId);
+                                        return (
+                                            <tr key={ag.id} className="hover:bg-blue-50/30 transition-colors">
+                                                <td className="p-4">
+                                                    <span className={`px-3 py-1.5 rounded-xl font-black text-sm ${
+                                                        ag.status === 'realizado' ? 'bg-green-100 text-green-700' 
+                                                        : isAtrasado ? 'bg-red-100 text-red-600' 
+                                                        : 'bg-blue-100 text-blue-700'
+                                                    }`}>
+                                                        {ag.hora}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="font-black text-slate-800">{ag.paciente}</div>
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
+                                                        {ag.status === 'realizado' ? 'Concluído' : isAtrasado ? 'Atrasado/Aguardando' : 'Agendado'}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                                                        <User size={14} className="text-slate-400"/> {ag.profissional}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                                                        <MapPin size={14} className="text-[#00A1FF]"/> {ag.local}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    {pac?.whatsapp ? (
+                                                        <a href={`https://wa.me/55${pac.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 bg-slate-50 hover:bg-green-50 text-slate-600 hover:text-green-600 border border-slate-200 px-4 py-2 rounded-xl text-xs font-black transition-colors shadow-sm">
+                                                            <Smartphone size={14}/> Ligar / Zap
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-xs font-bold text-slate-400">Sem contato</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                            <Calendar size={32} className="mx-auto text-slate-300 mb-3"/>
+                            <p className="font-bold text-slate-500 text-sm">A agenda de hoje está completamente vazia.</p>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -515,7 +597,6 @@ function MainApp() {
   const currentTutorialStep = tutorialStep >= 0 ? TUTORIAL_STEPS[tutorialStep] : null;
   const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
 
-  // CORREÇÃO CRÍTICA AQUI: fixed inset-0 tranca o ecrã, e overflow-auto cria as barras de rolagem
   return (
     <div className="fixed inset-0 flex flex-col md:flex-row overflow-hidden bg-[#fdfbff]">
       
@@ -580,7 +661,6 @@ function MainApp() {
            </div>
         </header>
 
-        {/* CORREÇÃO AQUI: overflow-auto cria as barras de rolagem universal e WebkitOverflow garante o touch no mobile */}
         <div className="flex-1 overflow-auto p-4 md:p-8 pb-32 custom-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
            <div className="max-w-[1600px] mx-auto min-h-full">
               {currentView === 'dashboard' && renderDashboard()}
