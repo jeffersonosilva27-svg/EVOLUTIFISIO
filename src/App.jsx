@@ -2,7 +2,7 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell
+  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, Zap, ListChecks
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -45,6 +45,72 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
+// ===================================================================================
+// DADOS DO TUTORIAL HIERARQUIZADO DO RAIOZINHO
+// ===================================================================================
+const TUTORIAL_CHAPTERS = [
+  { id: 'start', title: 'Boas-vindas', color: 'bg-yellow-400' },
+  { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-blue-500' },
+  { id: 'fisio', title: 'Fase 2: Ferramentas do Fisio', color: 'bg-green-600' },
+  { id: 'money', title: 'Fase 3: Financeiro', color: 'bg-purple-600' },
+  { id: 'end', title: 'Tudo Pronto!', color: 'bg-slate-900' }
+];
+
+const TUTORIAL_STEPS = [
+  { 
+    chapterId: 'start',
+    titulo: "Olá! Eu sou o Raiozinho ⚡", 
+    texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Vamos dar uma tour rápida dividida em fases para que você aprenda a usar sem esforço.", 
+    view: 'dashboard', 
+    botao: "Começar Tour Hierárquica" 
+  },
+  // FASE 1: BÁSICO (RECEPÇÃO / GERAL)
+  { 
+    chapterId: 'basico',
+    titulo: "O Painel Inicial", 
+    texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa de assinar hoje. Mantenha os seus olhos aqui!", 
+    view: 'dashboard', 
+    botao: "Entendi" 
+  },
+  { 
+    chapterId: 'basico',
+    titulo: "A Agenda Inteligente", 
+    texto: "Nesta aba, você agenda sessões simples ou em lotes. O nosso algoritmo de conflitos ativará a 'Dupla Janela' se houver sobreposição de horários.", 
+    view: 'agenda', 
+    botao: "Ir para Clínico" 
+  },
+  // FASE 2: FERRAMENTAS DO FISIO
+  { 
+    chapterId: 'fisio',
+    titulo: "Prontuário Completo (SOAP)", 
+    texto: "A aba Pacientes é o coração do seu atendimento. Clique num paciente para abrir o prontuário, escrever evoluções SOAP guiadas por IA e monitorizar a dor (Gráfico EVA).", 
+    view: 'pacientes', 
+    botao: "Ver Planos de Tratamento" 
+  },
+  { 
+    chapterId: 'fisio',
+    titulo: "Prescrição de Exercícios", 
+    texto: "Ainda na ficha do paciente, existe o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares específicos, com cargas e séries.", 
+    view: 'pacientes', 
+    botao: "Conhecer o Caixa" 
+  },
+  // FASE 3: FINANCEIRO
+  { 
+    chapterId: 'money',
+    titulo: "Controle do Fluxo de Caixa", 
+    texto: "Sempre que uma sessão é marcada como 'Realizada', o valor cai aqui automaticamente. Acompanhe a previsão de recebimentos e o ticket médio da sua clínica.", 
+    view: 'financeiro', 
+    botao: "Finalizar Tour" 
+  },
+  { 
+    chapterId: 'end',
+    titulo: "É Tudo Seu! 🚀", 
+    texto: "Parabéns! Você concluiu a tour guiada. O sistema está pronto para ser usado. Lembre-se: clicar no ícone do raio no topo me chamará novamente.", 
+    view: 'dashboard', 
+    botao: "Começar a Usar Agora" 
+  }
+];
+
 function MainApp() {
   const [user, setUser] = useState(() => {
     try {
@@ -82,9 +148,29 @@ function MainApp() {
   const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
   const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
 
+  // ESTADOS DO TUTORIAL DO RAIOZINHO
+  const [tutorialStep, setTutorialStep] = useState(-1);
+
   const navegarPara = (view, params = null) => {
     setNavParams(params);
     setCurrentView(view);
+  };
+
+  const iniciarTutorial = () => {
+    setTutorialStep(0);
+    setCurrentView('dashboard');
+  };
+
+  const avancarTutorial = () => {
+    const nextStep = tutorialStep + 1;
+    if (nextStep < TUTORIAL_STEPS.length) {
+       setTutorialStep(nextStep);
+       setCurrentView(TUTORIAL_STEPS[nextStep].view);
+    } else {
+       setTutorialStep(-1); // Fim do tutorial
+       localStorage.setItem('evoluti_tutorial_visto', 'sim');
+       setCurrentView('dashboard');
+    }
   };
 
   const realizarLogin = async (e) => {
@@ -111,6 +197,12 @@ function MainApp() {
           } else {
              sessionStorage.setItem('evoluti_user', JSON.stringify(userData));
           }
+
+          // Dispara tutorial se for o primeiro login neste dispositivo
+          if (!localStorage.getItem('evoluti_tutorial_visto')) {
+             setTimeout(() => setTutorialStep(0), 1000);
+          }
+
         } else { alert("Senha incorreta."); }
       } else { alert("Utilizador não encontrado."); }
     } catch (error) { alert("Erro de conexão."); }
@@ -154,14 +246,8 @@ function MainApp() {
         setAgendamentosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
 
-      // BUSCA GLOBAL DE TODOS OS EXERCÍCIOS PRESCRITOS NOS PLANOS
       const unsubEx = onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
-        const exs = snap.docs.map(d => ({ 
-           id: d.id, 
-           pacienteId: d.ref.parent.parent.id, // Acha o ID do paciente automaticamente
-           ...d.data() 
-        }));
-        // Ordena para que os mais recentes apareçam no topo
+        const exs = snap.docs.map(d => ({ id: d.id, pacienteId: d.ref.parent.parent.id, ...d.data() }));
         exs.sort((a,b) => new Date(b.dataInclusao || 0) - new Date(a.dataInclusao || 0));
         setExerciciosGlobais(exs);
       });
@@ -211,7 +297,6 @@ function MainApp() {
     const rotuloMetricas = user.role === 'gestor_clinico' ? 'Sessões da Clínica Hoje' : 'Suas Sessões Hoje';
     const primeiroNomeUsuario = (user?.name || user?.nome || 'Equipe').split(' ')[0];
 
-    // Lógica para os Exercícios: Pega os últimos 6 criados
     const meusExercicios = user.role === 'gestor_clinico' ? exerciciosGlobais : exerciciosGlobais.filter(e => e.profissional === user.name);
     const ultimosExercicios = meusExercicios.slice(0, 6);
 
@@ -314,7 +399,6 @@ function MainApp() {
                 </div>
             </div>
 
-            {/* SEÇÃO NOVA: ÚLTIMAS PRESCRIÇÕES DO PLANO DE TRATAMENTO */}
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
@@ -447,8 +531,53 @@ function MainApp() {
     );
   }
 
+  // Captura o capítulo atual para o tutorial
+  const currentTutorialStep = tutorialStep >= 0 ? TUTORIAL_STEPS[tutorialStep] : null;
+  const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
+
   return (
-    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff]">
+    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
+      
+      {/* O COMPONENTE DO TUTORIAL DO RAIOZINHO (ATUALIZADO COM CAPÍTULOS) */}
+      {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+          <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in-95 duration-300">
+             
+             {/* O Mascote (Placeholder: Raio) - AQUI VAI ENTRAR A SUA IMAGEM */}
+             <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-24 h-24 bg-yellow-400 rounded-full flex items-center justify-center border-4 border-white shadow-lg animate-bounce">
+                <Zap size={48} className="text-white fill-white" />
+             </div>
+
+             <div className="mt-10 text-center">
+                
+                {/* Visualização Hierárquica */}
+                <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner">
+                   <div className={`p-2 rounded-full ${currentChapter.color} text-white`}><ListChecks size={14}/></div>
+                   <span className="text-[11px] font-black uppercase tracking-widest text-slate-700">
+                     {currentChapter.title}
+                   </span>
+                </div>
+
+                <h3 className="text-2xl font-black text-slate-900 mb-4">{currentTutorialStep.titulo}</h3>
+                <p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">
+                  {currentTutorialStep.texto}
+                </p>
+                
+                <div className="flex gap-3 pt-2 border-t border-slate-100">
+                  {tutorialStep > 0 && (
+                    <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">
+                      Sair da Tour
+                    </button>
+                  )}
+                  <button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} text-white py-3 rounded-xl font-black hover:opacity-90 transition-all shadow-lg text-sm`}>
+                    {currentTutorialStep.botao}
+                  </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
       <aside onMouseEnter={() => setIsSidebarOpen(true)} onMouseLeave={() => setIsSidebarOpen(false)} className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'}`}>
         <div className="p-6 flex justify-center text-[#005ac1] shrink-0">
           <HeartPulse size={32} className="animate-pulse" />
@@ -471,6 +600,11 @@ function MainApp() {
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40">
            <span className="font-black text-blue-600 uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-3">
+              
+              <button onClick={iniciarTutorial} className="p-2 text-yellow-500 hover:bg-yellow-50 rounded-full transition-colors mr-2 hidden sm:block" title="Como funciona?">
+                 <Zap size={20} className="fill-yellow-500" />
+              </button>
+
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-black leading-none">{user?.name || user?.nome || 'Equipe'}</p>
                 <p className="text-[9px] text-blue-500 font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p>
