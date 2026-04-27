@@ -262,133 +262,124 @@ function MainApp() {
     const minutosAtuais = agora.getHours() * 60 + agora.getMinutes();
 
     const agendaGeralHoje = agendamentosGlobais
-        .filter(a => a.data === hojeIso && a.status !== 'cancelado')
+        .filter(a => a.data === hojeIso)
         .sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
         
-    const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
-
-    const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente');
-    const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
-    
-    let proximoEstaAtrasado = false;
-    if (proximoAtendimento) {
-        proximoEstaAtrasado = getMinutos(proximoAtendimento.hora) < minutosAtuais;
-    }
-
-    const agendaMetricas = user.role === 'gestor_clinico' ? agendaGeralHoje : minhaAgendaHoje;
-    const totalMetricas = agendaMetricas.length;
-    const realizadasMetricas = agendaMetricas.filter(a => a.status === 'realizado').length;
-    const atrasadasMetricas = agendaMetricas.filter(a => {
-        if (a.status === 'realizado') return false;
-        return getMinutos(a.hora) < minutosAtuais;
-    }).length;
-
-    const rotuloMetricas = user.role === 'gestor_clinico' ? 'Sessões da Clínica Hoje' : 'Suas Sessões Hoje';
     const primeiroNomeUsuario = (user?.name || user?.nome || 'Equipe').split(' ')[0];
 
-    const meusExercicios = user.role === 'gestor_clinico' ? exerciciosGlobais : exerciciosGlobais.filter(e => e.profissional === user.name);
-    const ultimosExercicios = meusExercicios.slice(0, 6);
+    // =========================================================================
+    // NOVO PAINEL EXCLUSIVO DA RECEPÇÃO
+    // =========================================================================
+    if (user.role === 'recepcao' || user.role === 'recepcionista' || user.role === 'atendimento') {
+        const sessoesValidas = agendaGeralHoje.filter(a => a.status !== 'cancelado');
+        const sessoesPendentesGeral = sessoesValidas.filter(a => !a.status || a.status === 'pendente').length;
+        const sessoesRealizadasGeral = sessoesValidas.filter(a => a.status === 'realizado').length;
+        const sessoesCanceladas = agendaGeralHoje.filter(a => a.status === 'cancelado').length;
 
-    // =========================================================================
-    // NOVO PAINEL DA RECEPÇÃO RESTAURADO (COM LISTA DE PACIENTES DO DIA)
-    // =========================================================================
-    if (user.role === 'recepcao' || user.role === 'recepcionista') {
-        const sessoesPendentesGeral = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
-        const sessoesRealizadasGeral = agendaGeralHoje.filter(a => a.status === 'realizado').length;
-        const taxaConclusao = agendaGeralHoje.length > 0 ? Math.round((sessoesRealizadasGeral / agendaGeralHoje.length) * 100) : 0;
-        
         return (
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div>
                   <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel da Recepção</h1>
-                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Aqui está o controlo de pacientes de hoje.</p>
+                  <p className="text-slate-500 font-medium">Bom dia, {primeiroNomeUsuario}! Controle o fluxo da clínica em tempo real.</p>
                 </div>
                 
-                {/* CARTÕES DE INSIGHTS DA RECEPÇÃO */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-[#00A1FF] text-white rounded-[32px] p-8 shadow-xl relative overflow-hidden">
+                {/* 4 CARTÕES DE ESTATÍSTICAS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-[#00A1FF] text-white rounded-[24px] p-6 shadow-lg relative overflow-hidden">
                         <div className="relative z-10">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-2">Agendamentos Totais</p>
-                            <h3 className="text-5xl font-black">{agendaGeralHoje.length}</h3>
-                            <p className="text-xs font-bold text-blue-50 mt-4">Atendimentos marcados hoje</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-1">Agendados Hoje</p>
+                            <h3 className="text-4xl font-black">{sessoesValidas.length}</h3>
                         </div>
-                        <Calendar className="absolute -right-6 -bottom-6 text-white/20 w-32 h-32" />
+                        <Calendar className="absolute -right-4 -bottom-4 text-white/20 w-24 h-24" />
                     </div>
                     
-                    <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm flex flex-col justify-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Aguardando / Atrasados</p>
-                        <h3 className="text-4xl font-black text-[#0F214A]">{sessoesPendentesGeral}</h3>
-                        <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
-                            <div className="bg-amber-400 h-full rounded-full transition-all" style={{ width: `${agendaGeralHoje.length > 0 ? (sessoesPendentesGeral / agendaGeralHoje.length) * 100 : 0}%` }}></div>
-                        </div>
-                        <p className="text-xs font-bold text-slate-400 mt-2">Pacientes por atender hoje</p>
+                    <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando / Atrasos</p>
+                        <h3 className="text-3xl font-black text-[#0F214A]">{sessoesPendentesGeral}</h3>
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-[32px] p-8 shadow-sm flex flex-col justify-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Taxa de Conclusão</p>
-                        <h3 className="text-4xl font-black text-[#0F214A]">{taxaConclusao}%</h3>
-                        <p className="text-xs font-bold text-slate-400 mt-4">{sessoesRealizadasGeral} de {agendaGeralHoje.length} sessões concluídas</p>
+                    <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados</p>
+                        <h3 className="text-3xl font-black text-green-600">{sessoesRealizadasGeral}</h3>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Cancelados / Faltas</p>
+                        <h3 className="text-3xl font-black text-red-500">{sessoesCanceladas}</h3>
                     </div>
                 </div>
 
-                {/* TABELA DE PACIENTES DO DIA */}
+                {/* GRELHA COMPLETA DO DIA */}
                 <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-black text-[#0F214A] flex items-center gap-2">
-                            <Users className="text-[#00A1FF]"/> Controle de Fluxo Diário (Recepção)
+                            <Users className="text-[#00A1FF]"/> Agenda Completa de Hoje
                         </h3>
                     </div>
 
                     {agendaGeralHoje.length > 0 ? (
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left min-w-[700px]">
+                        <div className="overflow-x-auto custom-scrollbar pb-4">
+                            <table className="w-full text-left min-w-[800px] border-collapse">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
                                     <tr>
-                                        <th className="p-4">Hora</th>
+                                        <th className="p-4 rounded-tl-xl">Horário</th>
                                         <th className="p-4">Paciente</th>
+                                        <th className="p-4">Status</th>
                                         <th className="p-4">Profissional</th>
-                                        <th className="p-4">Local</th>
-                                        <th className="p-4 text-right">Contato Rápido</th>
+                                        <th className="p-4">Sala/Local</th>
+                                        <th className="p-4 text-right rounded-tr-xl">Ação Rápida</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {agendaGeralHoje.map(ag => {
-                                        const isAtrasado = (!ag.status || ag.status === 'pendente') && getMinutos(ag.hora) < minutosAtuais;
+                                        const isAtrasado = (!ag.status || ag.status === 'pendente') && getMinutos(ag.hora) < minutosAtuais && ag.status !== 'cancelado';
+                                        const isCancelado = ag.status === 'cancelado';
+                                        const isRealizado = ag.status === 'realizado';
                                         const pac = pacientes.find(p => p.id === ag.pacienteId);
+                                        
                                         return (
-                                            <tr key={ag.id} className="hover:bg-blue-50/30 transition-colors">
-                                                <td className="p-4">
+                                            <tr key={ag.id} className="hover:bg-slate-50/50 transition-colors group">
+                                                <td className="p-4 align-middle">
                                                     <span className={`px-3 py-1.5 rounded-xl font-black text-sm ${
-                                                        ag.status === 'realizado' ? 'bg-green-100 text-green-700' 
-                                                        : isAtrasado ? 'bg-amber-100 text-amber-700' 
-                                                        : 'bg-blue-100 text-[#00A1FF]'
+                                                        isRealizado ? 'bg-green-50 text-green-700' 
+                                                        : isCancelado ? 'bg-slate-100 text-slate-400 line-through'
+                                                        : isAtrasado ? 'bg-red-50 text-red-600' 
+                                                        : 'bg-blue-50 text-[#00A1FF]'
                                                     }`}>
                                                         {ag.hora}
                                                     </span>
                                                 </td>
-                                                <td className="p-4">
-                                                    <div className="font-black text-slate-800">{ag.paciente}</div>
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
-                                                        {ag.status === 'realizado' ? 'Concluído' : isAtrasado ? 'Atrasado/Aguardando' : 'Agendado'}
+                                                <td className="p-4 align-middle">
+                                                    <div className={`font-black ${isCancelado ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{ag.paciente}</div>
+                                                </td>
+                                                <td className="p-4 align-middle">
+                                                    {isCancelado ? (
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase bg-slate-100 px-2 py-1 rounded-md">Cancelado</span>
+                                                    ) : isRealizado ? (
+                                                        <span className="text-[10px] font-bold text-green-700 uppercase bg-green-50 px-2 py-1 rounded-md">Concluído</span>
+                                                    ) : isAtrasado ? (
+                                                        <span className="text-[10px] font-bold text-red-600 uppercase bg-red-50 px-2 py-1 rounded-md animate-pulse">Atrasado</span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded-md">Aguardando</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 align-middle">
+                                                    <div className={`text-xs font-bold flex items-center gap-1.5 ${isCancelado ? 'text-slate-400' : 'text-slate-600'}`}>
+                                                        <User size={14} className={isCancelado ? 'text-slate-300' : 'text-[#00A1FF]'}/> {ag.profissional}
                                                     </div>
                                                 </td>
-                                                <td className="p-4">
-                                                    <div className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                                                        <User size={14} className="text-slate-400"/> {ag.profissional}
+                                                <td className="p-4 align-middle">
+                                                    <div className={`text-xs font-bold flex items-center gap-1.5 ${isCancelado ? 'text-slate-400' : 'text-slate-600'}`}>
+                                                        <MapPin size={14} className={isCancelado ? 'text-slate-300' : 'text-slate-400'}/> {ag.local}
                                                     </div>
                                                 </td>
-                                                <td className="p-4">
-                                                    <div className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                                                        <MapPin size={14} className="text-[#00A1FF]"/> {ag.local}
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-right">
-                                                    {pac?.whatsapp ? (
-                                                        <a href={`https://wa.me/55${pac.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 bg-slate-50 hover:bg-green-50 text-slate-600 hover:text-green-600 border border-slate-200 px-4 py-2 rounded-xl text-xs font-black transition-colors shadow-sm">
-                                                            <Smartphone size={14}/> Zap
+                                                <td className="p-4 text-right align-middle">
+                                                    {pac?.whatsapp && !isCancelado ? (
+                                                        <a href={`https://wa.me/55${pac.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 bg-white hover:bg-green-50 text-slate-600 hover:text-green-600 border border-slate-200 px-3 py-1.5 rounded-xl text-[11px] font-black transition-colors shadow-sm">
+                                                            <Smartphone size={14}/> Contatar
                                                         </a>
                                                     ) : (
-                                                        <span className="text-xs font-bold text-slate-400">Sem contato</span>
+                                                        <span className="text-[10px] font-bold text-slate-300">-</span>
                                                     )}
                                                 </td>
                                             </tr>
@@ -400,7 +391,7 @@ function MainApp() {
                     ) : (
                         <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                             <Calendar size={32} className="mx-auto text-slate-300 mb-3"/>
-                            <p className="font-bold text-slate-500 text-sm">A agenda de hoje está completamente vazia.</p>
+                            <p className="font-bold text-slate-500 text-sm">Não há nenhum agendamento registado para o dia de hoje.</p>
                         </div>
                     )}
                 </div>
@@ -411,6 +402,29 @@ function MainApp() {
     // =========================================================================
     // PAINEL CLÍNICO (GESTOR, FISIO E TO)
     // =========================================================================
+    
+    // Filtra os cancelados para não bagunçar o dashboard clínico
+    const agendaClinicaHoje = agendaGeralHoje.filter(a => a.status !== 'cancelado');
+    const minhaAgendaHoje = agendaClinicaHoje.filter(a => a.profissionalId === user.id);
+
+    const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente');
+    const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
+    let proximoEstaAtrasado = false;
+    if (proximoAtendimento) proximoEstaAtrasado = getMinutos(proximoAtendimento.hora) < minutosAtuais;
+
+    const agendaMetricas = user.role === 'gestor_clinico' ? agendaClinicaHoje : minhaAgendaHoje;
+    const totalMetricas = agendaMetricas.length;
+    const realizadasMetricas = agendaMetricas.filter(a => a.status === 'realizado').length;
+    const atrasadasMetricas = agendaMetricas.filter(a => {
+        if (a.status === 'realizado') return false;
+        return getMinutos(a.hora) < minutosAtuais;
+    }).length;
+
+    const rotuloMetricas = user.role === 'gestor_clinico' ? 'Sessões da Clínica Hoje' : 'Suas Sessões Hoje';
+    
+    const meusExercicios = user.role === 'gestor_clinico' ? exerciciosGlobais : exerciciosGlobais.filter(e => e.profissional === user.name);
+    const ultimosExercicios = meusExercicios.slice(0, 6);
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div>
