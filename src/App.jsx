@@ -45,9 +45,6 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
-// ===================================================================================
-// DADOS DO TUTORIAL DO CHOQUITO
-// ===================================================================================
 const TUTORIAL_CHAPTERS = [
   { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
   { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-[#00A1FF]', textColor: 'text-white' },
@@ -521,12 +518,10 @@ function MainApp() {
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
       
-      {/* O COMPONENTE DO TUTORIAL DO CHOQUITO */}
       {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in-95 duration-300 mt-16">
              
-             {/* O CHOQUITO! */}
              <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-40 h-40 flex items-center justify-center animate-bounce z-50">
                 <img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain drop-shadow-[0_10px_20px_rgba(0,161,255,0.6)]" />
              </div>
