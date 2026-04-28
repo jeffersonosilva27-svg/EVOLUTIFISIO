@@ -3,7 +3,7 @@ import {
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
   Trash2, Edit3, Landmark, Sparkles, ChevronRight, MessageCircle,
   TrendingDown, FileText, Loader2, CalendarClock, Target, ShieldAlert, 
-  Package, ShoppingCart, CheckCircle2, Layers, Dumbbell, Users, CornerDownRight
+  Package, ShoppingCart, CheckCircle2, Layers, Dumbbell, Users, CornerDownRight, Lightbulb
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
@@ -50,6 +50,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
   const [planoTratamento, setPlanoTratamento] = useState([]);
   const [novoExercicio, setNovoExercicio] = useState({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
+  
+  // ESTADO DO NOVO BANCO GLOBAL DE EXERCÍCIOS
+  const [bancoExerciciosGlobais, setBancoExerciciosGlobais] = useState([]);
 
   const [estoqueGeral, setEstoqueGeral] = useState([]);
   const [consumosPaciente, setConsumosPaciente] = useState([]);
@@ -70,7 +73,13 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
      const unsubEstoque = onSnapshot(collection(db, "estoque"), snap => {
          setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })));
      });
-     return () => unsubEstoque();
+     // CARREGAR BANCO GLOBAL DE EXERCÍCIOS
+     const unsubBancoEx = onSnapshot(collection(db, "banco_exercicios"), snap => {
+         const exs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+         exs.sort((a,b) => (a.nome || '').localeCompare(b.nome || ''));
+         setBancoExerciciosGlobais(exs);
+     });
+     return () => { unsubEstoque(); unsubBancoEx(); };
   }, []);
 
   const salvarPaciente = async (e) => {
@@ -158,7 +167,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
          setConsumosPaciente(list);
       });
 
-      // BUSCAR AGENDAMENTOS PARA MODULAÇÃO E EVOLUÇÃO
       const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", pacienteSelecionado.id));
       const unsubAg = onSnapshot(qAg, (snapshot) => {
           const ags = snapshot.docs
@@ -197,7 +205,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
       }
   };
 
-  // NOVA FUNÇÃO CORRIGIDA: Puxa da próxima sessão que tem modulação, não importando a data.
   const puxarCondutaParaEvolucao = (agendamentoModulado) => {
       if (agendamentoModulado && agendamentoModulado.exerciciosPlanejados) {
           const textoEx = agendamentoModulado.exerciciosPlanejados.map(ex => `• ${ex.nome} (${ex.series}x${ex.reps}${ex.carga ? ` - ${ex.carga}` : ''})`).join('\n');
@@ -235,17 +242,39 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     } catch (e) { alert("Erro ao salvar evolução."); }
   };
 
+  // NOVA FUNÇÃO: ADICIONAR COM MERGE INTELIGENTE NO BANCO GLOBAL
   const adicionarExercicio = async (e) => {
     e.preventDefault();
     if(!novoExercicio.musculo || !novoExercicio.nome) return alert("Preencha a Categoria e a Descrição.");
     try {
-      await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"), { ...novoExercicio, dataInclusao: new Date().toISOString(), profissional: user?.name || user?.nome || 'Equipe' });
+      const nomeFormatado = novoExercicio.nome.trim();
+      const nomeNorm = nomeFormatado.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      
+      const existeBanco = bancoExerciciosGlobais.find(ex => (ex.nomeNormalizado || '') === nomeNorm);
+      
+      // Se não existe, cria a raiz no Banco Global
+      if (!existeBanco) {
+          await addDoc(collection(db, "banco_exercicios"), {
+              nome: nomeFormatado,
+              categoria: novoExercicio.musculo,
+              nomeNormalizado: nomeNorm
+          });
+      }
+
+      // Adiciona o espelho personalizado no paciente (com carga, série, etc)
+      await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"), { 
+          ...novoExercicio, 
+          nome: existeBanco ? existeBanco.nome : nomeFormatado, // Força a usar a grafia correta do banco se existir
+          dataInclusao: new Date().toISOString(), 
+          profissional: user?.name || user?.nome || 'Equipe' 
+      });
+      
       setNovoExercicio({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
     } catch (e) { alert("Erro ao adicionar exercício."); }
   };
 
   const removerExercicio = async (id) => {
-    if(window.confirm("Remover esta prescrição do plano e do banco?")) await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
+    if(window.confirm("Remover esta prescrição do plano? (Não afeta o banco global)")) await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
   };
 
   const lancarProduto = async (e) => {
@@ -305,13 +334,14 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
   const estoqueOrdenado = [...estoqueGeral].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
+  // ABA RESTRITA APENAS PARA CLÍNICOS
   const abasDisponiveis = [
-    { id: 'historico', icon: FileText, label: 'Histórico Clínico', restrito: false },
-    { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restrito: false },
-    { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restrito: false },
-    { id: 'financeiro', icon: Landmark, label: 'Financeiro', restrito: true },
-    { id: 'dados', icon: Search, label: 'Arquivos e Exames', restrito: false },
-    { id: 'ia', icon: Sparkles, label: 'Agente IA', restrito: false }
+    { id: 'historico', icon: FileText, label: 'Histórico Clínico', restritoFin: false, restritoClinico: false },
+    { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restritoFin: false, restritoClinico: true },
+    { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restritoFin: false, restritoClinico: false },
+    { id: 'financeiro', icon: Landmark, label: 'Financeiro', restritoFin: true, restritoClinico: false },
+    { id: 'dados', icon: Search, label: 'Arquivos e Exames', restritoFin: false, restritoClinico: false },
+    { id: 'ia', icon: Sparkles, label: 'Agente IA', restritoFin: false, restritoClinico: false }
   ];
 
   if (pacienteSelecionado) {
@@ -323,7 +353,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
         return acc;
     }, {});
 
-    // NOVA INTELIGÊNCIA: Encontra a primeira sessão futura (pendente/confirmada) que tenha modulação!
     const proximaSessaoModulada = agendamentosFuturos.find(a => a.exerciciosPlanejados && a.exerciciosPlanejados.length > 0);
 
     return (
@@ -379,7 +408,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
         <div className="flex flex-nowrap w-full border-b border-slate-200 overflow-x-auto custom-scrollbar touch-pan-x hide-scrollbar">
           {abasDisponiveis.map(tab => {
-            if (tab.restrito && !hasAccess(['gestor_clinico', 'admin_fin'])) return null;
+            if (tab.restritoFin && !hasAccess(['gestor_clinico', 'admin_fin'])) return null;
+            if (tab.restritoClinico && !hasAccess(['gestor_clinico', 'fisio', 'to'])) return null;
             return (
               <button key={tab.id} onClick={() => setTabAtiva(tab.id)} className={`shrink-0 px-6 py-4 flex items-center gap-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${tabAtiva === tab.id ? 'border-[#00A1FF] text-[#00A1FF] bg-[#00A1FF]/5' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
                 <tab.icon size={16}/> {tab.label}
@@ -393,12 +423,18 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
             <div className="space-y-6">
                <div className={`p-6 md:p-8 rounded-[32px] border transition-colors ${editandoEvolucaoId ? 'bg-amber-50 border-amber-200' : 'bg-blue-50/50 border-blue-100'}`}>
                   
-                  {/* BOTÃO MÁGICO DE PUXAR CONDUTA (Correção de Data Inteligente) */}
-                  {proximaSessaoModulada && !editandoEvolucaoId && (
-                      <div className="mb-4">
-                          <button onClick={() => puxarCondutaParaEvolucao(proximaSessaoModulada)} className="w-full md:w-auto bg-[#0F214A] text-white px-6 py-2.5 rounded-xl font-black text-xs shadow-md hover:bg-[#00A1FF] transition-all flex items-center justify-center gap-2">
-                             <CornerDownRight size={14} className="text-[#FFCC00]" /> Puxar Conduta Planejada ({new Date(proximaSessaoModulada.data).toLocaleDateString('pt-BR')})
-                          </button>
+                  {!editandoEvolucaoId && (
+                      <div className="mb-6">
+                          {proximaSessaoModulada ? (
+                              <button onClick={() => puxarCondutaParaEvolucao(proximaSessaoModulada)} className="w-full md:w-auto bg-[#0F214A] text-white px-6 py-3 rounded-xl font-black text-xs shadow-md hover:bg-[#00A1FF] transition-all flex items-center justify-center gap-2">
+                                 <CornerDownRight size={14} className="text-[#FFCC00]" /> Puxar Conduta Planejada ({new Date(proximaSessaoModulada.data).toLocaleDateString('pt-BR')})
+                              </button>
+                          ) : (
+                              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-white/50 p-3 rounded-xl border border-slate-300 border-dashed w-fit">
+                                  <Lightbulb size={16} className="text-amber-400 shrink-0"/>
+                                  Dica: Module a próxima sessão na aba "Plano" para puxar os exercícios para cá automaticamente.
+                              </div>
+                          )}
                       </div>
                   )}
 
@@ -511,7 +547,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                                        </div>
                                    ) : (
                                        <p className="text-sm font-bold text-slate-500 mb-6 bg-white/50 p-4 rounded-xl border border-blue-100">
-                                           Seu banco de exercícios está vazio. Adicione exercícios no formulário abaixo primeiro.
+                                           Seu banco de exercícios local está vazio. Adicione exercícios no formulário abaixo primeiro.
                                        </p>
                                    )}
                                    <button onClick={salvarModulacaoSessao} className="bg-[#00A1FF] text-white px-6 md:px-8 py-3 md:py-4 rounded-2xl font-black text-sm shadow-lg hover:bg-blue-600 transition-colors w-full md:w-auto">
@@ -528,7 +564,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                 </div>
 
                 <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
-                   <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Target className="text-slate-400 mr-2"/> Adicionar ao Banco de Exercícios</h3>
+                   <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Target className="text-slate-400 mr-2"/> Adicionar ao Plano (Banco Global Inteligente)</h3>
                    
                    <form onSubmit={adicionarExercicio} className="bg-slate-50 p-5 md:p-6 rounded-2xl border border-slate-200 mb-8">
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
@@ -539,12 +575,32 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                               {GRUPOS_MUSCULARES.map(m => <option key={m} value={m}>{m}</option>)}
                            </select>
                          </div>
-                         <div className="sm:col-span-2 md:col-span-2">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Exercício / Aparelho</label>
-                           <input required type="text" placeholder="Ex: Supino ou PowerBreathe" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.nome} onChange={e => setNovoExercicio({...novoExercicio, nome: e.target.value})}/>
+                         <div className="sm:col-span-2 md:col-span-2 relative">
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Exercício (Autocompletar)</label>
+                           <input 
+                              required 
+                              type="text" 
+                              list="banco-exercicios-lista"
+                              placeholder="Digite para buscar na clínica..." 
+                              className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" 
+                              value={novoExercicio.nome} 
+                              onChange={e => {
+                                  const val = e.target.value;
+                                  let nCat = novoExercicio.musculo;
+                                  const sugestao = bancoExerciciosGlobais.find(x => x.nome === val);
+                                  if (sugestao && !nCat) nCat = sugestao.categoria;
+                                  setNovoExercicio({...novoExercicio, nome: val, musculo: nCat});
+                              }}
+                           />
+                           <datalist id="banco-exercicios-lista">
+                              {bancoExerciciosGlobais
+                                  .filter(ex => !novoExercicio.musculo || ex.categoria === novoExercicio.musculo)
+                                  .map(ex => <option key={ex.id} value={ex.nome} />)
+                              }
+                           </datalist>
                          </div>
                          <div className="sm:col-span-2 md:col-span-1">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Carga</label>
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Carga (Personalizada)</label>
                            <input type="text" placeholder="Ex: 10kg, Azul" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.carga} onChange={e => setNovoExercicio({...novoExercicio, carga: e.target.value})}/>
                          </div>
                       </div>
@@ -560,7 +616,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                            <input type="text" className="w-16 text-right font-black outline-none bg-transparent text-[#0F214A]" value={novoExercicio.reps} onChange={e => setNovoExercicio({...novoExercicio, reps: e.target.value})}/>
                          </div>
                          
-                         <button type="submit" className="w-full md:w-auto ml-auto bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-black hover:bg-slate-300 transition-colors shadow-sm text-sm mt-2 md:mt-0">Guardar no Banco</button>
+                         <button type="submit" className="w-full md:w-auto ml-auto bg-slate-200 text-slate-700 px-6 py-3 rounded-xl font-black hover:bg-slate-300 transition-colors shadow-sm text-sm mt-2 md:mt-0">Guardar no Plano</button>
                       </div>
                    </form>
 
@@ -592,7 +648,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                    ) : (
                        <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                           <Dumbbell size={40} className="mx-auto text-slate-300 mb-3"/>
-                          <p className="font-bold text-slate-500 text-sm">O banco de exercícios está vazio.</p>
+                          <p className="font-bold text-slate-500 text-sm">O plano de exercícios está vazio.</p>
                        </div>
                    )}
                 </div>
