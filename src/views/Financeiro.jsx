@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, TrendingUp, Calendar, Users, ChevronLeft, ChevronRight,
   ArrowUpCircle, ArrowDownCircle, PieChart, 
-  Download, Filter, Loader2, CheckCircle2, Clock, User, Printer, AlertTriangle, Package, ShoppingCart, Trash2, Edit3, Plus, TrendingDown, Archive, Search
+  Download, Filter, Loader2, CheckCircle2, Clock, User, Printer, AlertTriangle, Package, ShoppingCart, Trash2, Edit3, Plus, TrendingDown, Archive, Search, Landmark, X
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
@@ -180,7 +180,8 @@ function ModuloEstoque({ hasAccess }) {
           <div className="bg-white p-10 rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in-95 overflow-y-auto max-h-[95vh] custom-scrollbar">
              <div className="flex justify-between items-center mb-8 shrink-0">
                 <h3 className="font-black text-2xl text-[#0F214A]">{editandoId ? 'Editar Item' : 'Novo Item no Estoque'}</h3>
-                <button onClick={fecharFormulario} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X/></button>
+                {/* O 'X' AGORA ESTÁ IMPORTADO E FUNCIONA! */}
+                <button onClick={fecharFormulario} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X size={20}/></button>
              </div>
              
              <form onSubmit={salvarItem} className="space-y-5">
@@ -196,6 +197,7 @@ function ModuloEstoque({ hasAccess }) {
                         <option value="">Categoria...</option>
                         <option value="Consumíveis">Consumíveis (Géis/Agulhas)</option>
                         <option value="Equipamentos">Equipamentos</option>
+                        <option value="Hospitalar">Hospitalar</option>
                         <option value="Escritório">Papelaria/Escritório</option>
                         <option value="Limpeza">Limpeza/Higiene</option>
                         <option value="Venda Direta">Produtos para Venda</option>
@@ -271,7 +273,6 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
   const avancarMes = () => setMesFiltro(prev => prev === 11 ? 0 : prev + 1);
   const voltarMes = () => setMesFiltro(prev => prev === 0 ? 11 : prev - 1);
 
-  // NOVA FUNÇÃO: Exorcizar Fantasmas (Apagar agendamentos de pacientes excluídos)
   const apagarFantasma = async (id, nome) => {
     if (window.confirm(`Este é um registro órfão de "${nome}" (o paciente foi excluído). Deseja apagar esta sessão permanentemente do banco de dados?`)) {
         try {
@@ -344,7 +345,7 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
       
       <div className="flex border-b border-slate-200 print:hidden overflow-x-auto custom-scrollbar">
          <button onClick={() => setTabAtiva('caixa')} className={`px-8 py-4 flex items-center gap-2 text-sm font-black transition-all border-b-4 whitespace-nowrap ${tabAtiva === 'caixa' ? 'border-[#00A1FF] text-[#00A1FF] bg-[#00A1FF]/5' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-            <DollarSign size={18}/> Fluxo de Caixa
+            <Landmark size={18}/> Fluxo de Caixa
          </button>
          <button onClick={() => setTabAtiva('estoque')} className={`px-8 py-4 flex items-center gap-2 text-sm font-black transition-all border-b-4 whitespace-nowrap ${tabAtiva === 'estoque' ? 'border-[#00A1FF] text-[#00A1FF] bg-[#00A1FF]/5' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
             <Package size={18}/> Controle de Estoque
@@ -357,7 +358,7 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
           <div className="space-y-8 animate-in slide-in-from-left-4 duration-300">
               <div className="flex flex-col md:flex-row justify-between items-end gap-4 print:hidden">
                 <div>
-                  <h1 className="text-3xl font-black text-[#0F214A] tracking-tight flex items-center gap-3"><DollarSign className="text-green-500" size={32}/> Visão Financeira</h1>
+                  <h1 className="text-3xl font-black text-[#0F214A] tracking-tight flex items-center gap-3"><Landmark className="text-green-500" size={32}/> Visão Financeira</h1>
                   <p className="text-slate-500 font-medium mt-1">Faturamento de sessões e vendas de materiais da clínica.</p>
                 </div>
                 <div className="flex items-center bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
@@ -406,8 +407,6 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
                          if (item.tipoDoc === 'sessao') {
                              const pac = pacientes.find(p => p.id === item.pacienteId); 
                              const valorSessao = parseValor(pac?.valor);
-                             
-                             // MÁGICA AQUI: Se não achar o paciente, é um Fantasma!
                              const isFantasma = !pac;
 
                              return (
@@ -429,7 +428,6 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
                                                 </button>
                                             ) : null}
                                             
-                                            {/* O CAÇA-FANTASMAS EM AÇÃO */}
                                             {isFantasma && (
                                                 <button onClick={() => apagarFantasma(item.id, item.paciente)} className="font-black text-red-600 flex items-center gap-1 text-[11px] bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded-lg transition-colors shadow-sm" title="Apagar este registro órfão do sistema">
                                                    <Trash2 size={14}/> Limpar Erro

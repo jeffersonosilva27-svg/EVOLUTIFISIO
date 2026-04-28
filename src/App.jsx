@@ -1,8 +1,9 @@
 import React, { useState, useEffect, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
-  Activity, DollarSign, Settings, LogOut, Menu, 
-  ShieldCheck, Loader2, Clock, CheckCircle2, AlertCircle, ArrowRight, Lock, ChevronLeft, Dumbbell, ListChecks, Zap, MessageSquareShare, Package
+  DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
+  CheckCircle2, ArrowRight, Lock, ChevronLeft, 
+  ListChecks, Zap, MessageSquareShare, Award, Target, Dumbbell
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -54,13 +55,13 @@ const TUTORIAL_CHAPTERS = [
 ];
 
 const TUTORIAL_STEPS = [
-  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica. Comigo a energia nunca acaba! Vamos fazer um tour rápido para você aprender a usar tudo sem esforço.", view: 'dashboard', botao: "Começar Tour Guiada" },
-  { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções que precisa assinar hoje. Mantenha os seus olhos sempre aqui!", view: 'dashboard', botao: "Entendi" },
-  { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes. O algoritmo ativará a 'Dupla Janela' se houver sobreposição de horários.", view: 'agenda', botao: "Ir para Clínico" },
-  { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
-  { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares e TMI.", view: 'pacientes', botao: "Conhecer o Caixa" },
-  { chapterId: 'money', titulo: "Caixa e Estoque", texto: "Na guia de Caixa & Estoque você fatura as sessões automaticamente e controla os materiais da clínica em abas separadas!", view: 'financeiro', botao: "Finalizar Tour" },
-  { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "Você concluiu o tour! O sistema está pronto para receber toda a sua energia. Se precisar de mim novamente, clique no ícone do raio azul lá em cima!", view: 'dashboard', botao: "Começar a Usar Agora" }
+  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica.", view: 'dashboard', botao: "Começar Tour Guiada" },
+  { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções pendentes.", view: 'dashboard', botao: "Entendi" },
+  { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes com proteção de janela dupla.", view: 'agenda', botao: "Ir para Clínico" },
+  { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
+  { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento' com exercícios e TMI.", view: 'pacientes', botao: "Conhecer o Caixa" },
+  { chapterId: 'money', titulo: "Caixa e Estoque", texto: "Na guia de Caixa & Estoque você fatura as sessões e controla os materiais em abas separadas!", view: 'financeiro', botao: "Finalizar Tour" },
+  { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "O sistema está pronto para receber toda a sua energia.", view: 'dashboard', botao: "Começar a Usar Agora" }
 ];
 
 function MainApp() {
@@ -172,9 +173,9 @@ function MainApp() {
     { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
-    { id: 'avaliacoes', icon: Activity, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
+    { id: 'avaliacoes', icon: Award, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
     { id: 'financeiro', icon: DollarSign, label: 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin'] },
-    { id: 'equipe', icon: Settings, label: 'Equipe', roles: ['gestor_clinico'] },
+    { id: 'equipe', icon: ShieldCheck, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
 
   const renderDashboard = () => {
@@ -182,14 +183,20 @@ function MainApp() {
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
     const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
-    const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente');
+    const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado');
     const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
     const proximoEstaAtrasado = proximoAtendimento ? getMinutos(proximoAtendimento.hora) < minutosAtuais : false;
-    const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado').length;
+    const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
-    const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado').length;
+    const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
+    
+    const exerciciosDaSessao = proximoAtendimento?.exerciciosPlanejados || [];
     const planoProximoPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
+    
+    const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoProximoPaciente;
+    const isSessaoModulada = exerciciosDaSessao.length > 0;
+    
     const primeiroNome = (user?.name || user?.nome || 'Equipe').split(' ')[0];
 
     return (
@@ -204,19 +211,27 @@ function MainApp() {
                         <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4"><Clock size={14}/> Seu Próximo Paciente</p>
                         {proximoAtendimento ? (
                             <>
-                                <h2 className="text-4xl md:text-5xl font-black mb-2">{proximoAtendimento.paciente}</h2>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <h2 className="text-4xl md:text-5xl font-black">{proximoAtendimento.paciente}</h2>
+                                    {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase">Presença Confirmada</span>}
+                                </div>
                                 <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
                                     <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse' : 'bg-[#00A1FF] text-white'}`}>{proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}</span>
                                     <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300">{proximoAtendimento.local}</span>
                                 </p>
-                                {planoProximoPaciente.length > 0 && (
-                                    <div className="mt-6 bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-md max-w-lg">
-                                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1"><Dumbbell size={12}/> Exercícios Prescritos</p>
+                                
+                                {listaExibicao.length > 0 && (
+                                    <div className={`mt-6 border rounded-2xl p-4 backdrop-blur-md max-w-lg mb-2 ${isSessaoModulada ? 'bg-[#FFCC00]/10 border-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
+                                        <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-1 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
+                                            {isSessaoModulada ? <><Target size={12}/> Modulação de Atendimento (Planejado)</> : <><Dumbbell size={12}/> Exercícios do Plano Geral</>}
+                                        </p>
                                         <div className="space-y-2">
-                                            {planoProximoPaciente.map(ex => (
-                                                <div key={ex.id} className="flex justify-between items-center text-sm">
+                                            {listaExibicao.map((ex, i) => (
+                                                <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
                                                     <span className="font-bold text-white">{ex.nome}</span>
-                                                    <span className="text-slate-300 text-xs">{ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}</span>
+                                                    <span className="text-slate-300 text-xs text-right ml-4 shrink-0 bg-white/10 px-2 py-1 rounded-lg">
+                                                        {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
+                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
@@ -228,11 +243,11 @@ function MainApp() {
                         )}
                     </div>
                     {proximoAtendimento && (
-                        <div className="relative z-10 mt-8">
+                        <div className="relative z-10 mt-8 flex flex-wrap gap-3">
                             <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="bg-[#FFCC00] text-[#0F214A] px-6 py-3 rounded-2xl font-black text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-lg w-fit">Iniciar Prontuário <ArrowRight size={16}/></button>
                         </div>
                     )}
-                    <Activity className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
+                    <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
                 </div>
                 <div className="flex flex-col gap-6">
                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center">
@@ -341,7 +356,6 @@ function MainApp() {
         </nav>
         <div className="p-4 flex flex-col items-center gap-4 mt-auto">
            <button onClick={fazerLogout} className="p-2 text-red-400 hover:text-red-600 transition-colors"><LogOut size={20}/></button>
-           {/* AQUI ESTÁ A TAG DE VERSÃO OFICIAL */}
            <div className={`text-center font-black text-slate-300 transition-opacity duration-300 ${!isSidebarOpen ? 'opacity-0 h-0 text-[0px]' : 'opacity-100 text-[10px]'}`}>
               v1.0.0
            </div>

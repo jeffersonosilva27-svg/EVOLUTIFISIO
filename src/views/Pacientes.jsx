@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
   Trash2, Edit3, DollarSign, Sparkles, Download, ChevronRight, MessageCircle,
-  TrendingDown, History, Info, Loader2, FileText, CalendarClock, Dumbbell, Target, ShieldAlert, Package, ShoppingCart
+  TrendingDown, FileText, Loader2, CalendarClock, Target, ShieldAlert, Package, ShoppingCart, CheckCircle2, Dumbbell
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
@@ -25,6 +25,11 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [novoSoap, setNovoSoap] = useState('');
   const [metricaPain, setMetricaPain] = useState(0); 
   const [editandoEvolucaoId, setEditandoEvolucaoId] = useState(null);
+
+  // ESTADOS DA MODULAÇÃO (CARDS/BOX)
+  const [agendamentosFuturos, setAgendamentosFuturos] = useState([]);
+  const [sessaoModulacaoId, setSessaoModulacaoId] = useState('');
+  const [exerciciosSessao, setExerciciosSessao] = useState([]);
 
   const [editandoId, setEditandoId] = useState(null);
   const [novoPaciente, setNovoPaciente] = useState({
@@ -132,6 +137,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   useEffect(() => {
     if (pacienteSelecionado) {
       setConfirmarExclusao(false);
+      setSessaoModulacaoId('');
+      setExerciciosSessao([]);
+
       const qEvo = query(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), orderBy("data", "desc"));
       const unsubEvo = onSnapshot(qEvo, (snapshot) => setEvolucoes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
       
@@ -145,10 +153,42 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
          setConsumosPaciente(list);
       });
 
+      // BUSCAR AGENDAMENTOS FUTUROS
+      const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", pacienteSelecionado.id), where("status", "==", "pendente"));
+      const unsubAg = onSnapshot(qAg, (snapshot) => {
+          const ags = snapshot.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => new Date(a.data) - new Date(b.data));
+          setAgendamentosFuturos(ags);
+      });
+
       setLaudoExame(''); setAnaliseIA(''); setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(0);
-      return () => { unsubEvo(); unsubPlano(); unsubConsumos(); };
+      return () => { unsubEvo(); unsubPlano(); unsubConsumos(); unsubAg(); };
     }
   }, [pacienteSelecionado]);
+
+  // FUNÇÕES DA MODULAÇÃO (CARDS)
+  const handleSelectModulacao = (id) => {
+      setSessaoModulacaoId(id);
+      const ag = agendamentosFuturos.find(a => a.id === id);
+      setExerciciosSessao(ag?.exerciciosPlanejados || []);
+  };
+
+  const toggleExercicioSessao = (ex) => {
+      setExerciciosSessao(prev => {
+          const exists = prev.find(p => p.id === ex.id);
+          if (exists) return prev.filter(p => p.id !== ex.id);
+          return [...prev, { id: ex.id, nome: ex.nome, carga: ex.carga, series: ex.series, reps: ex.reps }];
+      });
+  };
+
+  const salvarModulacaoSessao = async () => {
+      if (!sessaoModulacaoId) return alert("Selecione uma sessão futura agendada.");
+      try {
+          await updateDoc(doc(db, "agendamentos", sessaoModulacaoId), { exerciciosPlanejados: exerciciosSessao });
+          alert("Sessão modulada e guardada com sucesso! Ela brilhará na tela inicial no dia do atendimento.");
+      } catch(e) {
+          alert("Erro ao salvar modulação.");
+      }
+  };
 
   const iniciarEdicaoEvolucao = (evo) => {
     setNovoSoap(evo.texto); 
@@ -189,7 +229,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   };
 
   const removerExercicio = async (id) => {
-    if(window.confirm("Remover esta prescrição do plano?")) await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
+    if(window.confirm("Remover esta prescrição do plano e do banco?")) await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
   };
 
   const lancarProduto = async (e) => {
@@ -243,7 +283,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
       } catch (err) { alert("Erro ao estornar produto."); }
   };
 
-  // ORDENAÇÃO ALFABÉTICA
   const filtrados = (pacientes || [])
     .filter(p => (p.nome || '').toLowerCase().includes(termoBusca.toLowerCase()))
     .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
@@ -251,11 +290,11 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const estoqueOrdenado = [...estoqueGeral].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
   const abasDisponiveis = [
-    { id: 'historico', icon: History, label: 'Histórico Clínico', restrito: false },
+    { id: 'historico', icon: FileText, label: 'Histórico Clínico', restrito: false },
     { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restrito: false },
     { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restrito: false },
     { id: 'financeiro', icon: DollarSign, label: 'Financeiro', restrito: true },
-    { id: 'dados', icon: Info, label: 'Arquivos e Exames', restrito: false },
+    { id: 'dados', icon: Search, label: 'Arquivos e Exames', restrito: false },
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restrito: false }
   ];
 
@@ -405,8 +444,75 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
           {tabAtiva === 'plano' && (
              <div className="space-y-6 animate-in slide-in-from-bottom-4">
-                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
-                   <h3 className="font-black text-[#0F214A] mb-6 flex items-center"><Target className="text-[#00A1FF] mr-2"/> Prescrição Fisioterapêutica</h3>
+
+                {/* BLOCO INTELIGENTE: MODULAÇÃO DE SESSÕES (CARDS) */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-8 rounded-[32px] border border-blue-100 shadow-sm">
+                   <h3 className="font-black text-[#0F214A] flex items-center gap-2 mb-6"><Target className="text-[#00A1FF]"/> Modulação de Atendimento (Planejar Sessão)</h3>
+                   
+                   {agendamentosFuturos.length > 0 ? (
+                       <>
+                           <select 
+                               className="w-full max-w-lg p-4 bg-white border border-blue-200 rounded-2xl outline-none focus:border-[#00A1FF] font-black text-[#0F214A] text-sm shadow-sm cursor-pointer"
+                               value={sessaoModulacaoId}
+                               onChange={(e) => handleSelectModulacao(e.target.value)}
+                           >
+                               <option value="">Selecione uma sessão futura para modular...</option>
+                               {agendamentosFuturos.map(ag => (
+                                   <option key={ag.id} value={ag.id}>
+                                       {new Date(ag.data).toLocaleDateString('pt-BR')} às {ag.hora} - com {ag.profissional.split(' ')[0]} ({ag.local})
+                                   </option>
+                               ))}
+                           </select>
+                           
+                           {sessaoModulacaoId && (
+                               <div className="animate-in fade-in slide-in-from-top-4 mt-6">
+                                   <div className="flex justify-between items-center mb-4 border-b border-blue-200/50 pb-2">
+                                       <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Toque nos cards para designar ao atendimento:</p>
+                                       <span className="bg-[#00A1FF] text-white px-3 py-1 rounded-full text-[10px] font-black">{exerciciosSessao.length} selecionados</span>
+                                   </div>
+                                   
+                                   {planoTratamento.length > 0 ? (
+                                       <div className="flex flex-wrap gap-3 mb-6">
+                                           {planoTratamento.map(ex => {
+                                               const isSelected = exerciciosSessao.some(e => e.id === ex.id);
+                                               return (
+                                                   <button 
+                                                       key={ex.id} 
+                                                       onClick={() => toggleExercicioSessao(ex)} 
+                                                       className={`p-4 rounded-2xl border text-left transition-all hover:scale-105 ${isSelected ? 'bg-[#0F214A] text-white border-[#0F214A] shadow-lg' : 'bg-white text-slate-700 border-slate-200 shadow-sm hover:border-[#00A1FF]'}`}
+                                                   >
+                                                       <div className="flex justify-between items-center mb-1">
+                                                           <span className="font-black text-sm">{ex.nome}</span>
+                                                           {isSelected && <CheckCircle2 size={16} className="text-[#00A1FF] ml-3" />}
+                                                       </div>
+                                                       <div className={`text-xs font-bold ${isSelected ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                           {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
+                                                       </div>
+                                                   </button>
+                                               )
+                                           })}
+                                       </div>
+                                   ) : (
+                                       <p className="text-sm font-bold text-slate-500 mb-6 bg-white/50 p-4 rounded-xl border border-blue-100">
+                                           Seu banco de exercícios está vazio. Adicione exercícios no formulário abaixo primeiro.
+                                       </p>
+                                   )}
+                                   
+                                   <button onClick={salvarModulacaoSessao} className="bg-[#00A1FF] text-white px-8 py-4 rounded-2xl font-black text-sm shadow-lg hover:bg-blue-600 transition-colors w-full sm:w-auto">
+                                       Salvar Modulação da Sessão
+                                   </button>
+                               </div>
+                           )}
+                       </>
+                   ) : (
+                       <p className="text-sm font-bold text-slate-500 bg-white/50 p-6 rounded-2xl border border-blue-100">
+                           O paciente não possui agendamentos futuros pendentes na agenda para realizar a modulação.
+                       </p>
+                   )}
+                </div>
+
+                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
+                   <h3 className="font-black text-slate-800 mb-6 flex items-center"><Target className="text-slate-400 mr-2"/> Adicionar ao Banco de Exercícios</h3>
                    
                    <form onSubmit={adicionarExercicio} className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -438,7 +544,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                            <input type="text" className="w-16 text-center font-black outline-none bg-transparent text-[#0F214A]" value={novoExercicio.reps} onChange={e => setNovoExercicio({...novoExercicio, reps: e.target.value})}/>
                          </div>
                          
-                         <button type="submit" className="ml-auto bg-[#00A1FF] text-white px-6 py-2.5 rounded-xl font-black hover:bg-[#0F214A] transition-colors shadow-md text-sm">Adicionar ao Plano</button>
+                         <button type="submit" className="ml-auto bg-slate-200 text-slate-700 px-6 py-2.5 rounded-xl font-black hover:bg-slate-300 transition-colors shadow-sm text-sm">Guardar no Banco</button>
                       </div>
                    </form>
 
@@ -448,15 +554,15 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                              <div key={musculo} className="bg-white border-2 border-slate-100 rounded-2xl overflow-hidden shadow-sm">
                                 <div className="bg-slate-50 border-b border-slate-100 p-3 flex justify-between items-center">
                                    <h4 className="font-black text-slate-700 text-sm uppercase tracking-wide">{musculo}</h4>
-                                   <span className="text-[10px] font-black text-white bg-[#0F214A] px-2 py-1 rounded-md">{exercicios.length} exer.</span>
+                                   <span className="text-[10px] font-black text-white bg-slate-400 px-2 py-1 rounded-md">{exercicios.length} exer.</span>
                                 </div>
                                 <ul className="divide-y divide-slate-50">
                                    {exercicios.map(ex => (
                                       <li key={ex.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-start group">
                                          <div>
-                                            <p className="font-bold text-[#0F214A] leading-tight">{ex.nome}</p>
+                                            <p className="font-bold text-slate-800 leading-tight">{ex.nome}</p>
                                             <div className="flex items-center gap-3 mt-2 text-xs font-bold text-slate-500">
-                                               {ex.carga && <span className="bg-blue-50 text-[#00A1FF] px-2 py-0.5 rounded border border-blue-100">Carga: {ex.carga}</span>}
+                                               {ex.carga && <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">Carga: {ex.carga}</span>}
                                                <span>{ex.series} séries de {ex.reps}</span>
                                             </div>
                                          </div>
@@ -470,7 +576,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                    ) : (
                        <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                           <Dumbbell size={40} className="mx-auto text-slate-300 mb-3"/>
-                          <p className="font-bold text-slate-500">Nenhuma prescrição ativa para este paciente.</p>
+                          <p className="font-bold text-slate-500">O banco de exercícios deste paciente está vazio.</p>
                        </div>
                    )}
                 </div>
@@ -564,7 +670,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
           {tabAtiva === 'dados' && (
             <div className="space-y-6 animate-in slide-in-from-bottom-4">
               <div className="bg-white p-10 rounded-[32px] border border-slate-100 shadow-sm">
-                <h3 className="font-black text-slate-800 mb-6 flex items-center"><FileText className="mr-2 text-[#00A1FF]"/> Arquivos e Exames Clínicos (TEDE)</h3>
+                <h3 className="font-black text-slate-800 mb-6 flex items-center"><Search className="mr-2 text-[#00A1FF]"/> Arquivos e Exames Clínicos (TEDE)</h3>
                 <div className="bg-slate-50 p-10 rounded-[24px] border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-center hover:bg-slate-100 transition-colors">
                   <input type="file" id="exame" className="hidden" onChange={handleUploadExame} accept="image/*,application/pdf" />
                   <label htmlFor="exame" className="cursor-pointer bg-[#0F214A] text-white px-8 py-4 rounded-xl font-black flex items-center gap-3 hover:bg-[#00A1FF] transition-all shadow-lg">

@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight,
-  Layers, Loader2, Copy, User, MapPin, Sparkles, FileText, AlertTriangle, Ban
+  Layers, Loader2, Copy, User, MapPin, Sparkles, FileText, AlertTriangle, Ban, CheckCircle2, Lightbulb
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { analisarCapacidadePaciente } from '../services/geminiService';
 
-const LOCAIS = ['Sala 701', 'Sala 702', 'Ginásio Clínico', 'Studio Pilates', 'Prancha Ortostática', 'Atendimento Domiciliar'];
+const LOCAIS = [
+  'Sala 701', 'Sala 702', 'Sala 703', 'Sala 704', 'Sala 705', 
+  'Ginásio Clínico', 'Prancha Ortostática', 'Atendimento Domiciliar', 'Atendimento Hospitalar'
+];
+
 const DIAS_NOMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const getInfoData = (data) => {
@@ -34,22 +38,22 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   const [pacientes, setPacientes] = useState([]);
   const [profissionais, setProfissionais] = useState([]);
   const [dataSelecionada, setDataSelecionada] = useState(new Date());
-  
   const [mostrarForm, setMostrarForm] = useState(false);
   const [agendamentoEditando, setAgendamentoEditando] = useState(null);
   const [modoCancelamento, setModoCancelamento] = useState(false);
-
   const [carregandoIA, setCarregandoIA] = useState(false);
-  const [insightCapacidade, setInsightCapacidade] = useState('');
-  const [form, setForm] = useState({ pacienteId: '', pacienteNome: '', tipo: 'Atendimento', local: '', data: obterDataLocalISO(new Date()), hora: '08:00', profissionalId: '', profissionalNome: '' });
+  
+  const [form, setForm] = useState({ 
+    pacienteId: '', pacienteNome: '', tipo: 'Atendimento', local: '', 
+    data: obterDataLocalISO(new Date()), hora: '08:00', profissionalId: '', profissionalNome: '' 
+  });
+
   const [isLote, setIsLote] = useState(false);
   const [loteConfig, setLoteConfig] = useState({ quantidade: 10, diasSemana: [] });
   const [modalEscopo, setModalEscopo] = useState({ open: false, type: '' });
   const [filaConflitos, setFilaConflitos] = useState([]);
   const [agendamentosBons, setAgendamentosBons] = useState([]);
   const [idxConflito, setIdxConflito] = useState(0);
-  const [dualExistente, setDualExistente] = useState(null);
-  const [dualNovo, setDualNovo] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -62,166 +66,131 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     return () => { unsubAgenda(); unsubPac(); unsubProf(); };
   }, [user]);
 
-  const getNumeroSessao = (ag) => {
-    const sessoesPaciente = agendamentos.filter(s => s.pacienteId === ag.pacienteId && s.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
-    return sessoesPaciente.findIndex(s => s.id === ag.id) + 1;
-  };
-
   const verificarConflito = (d, h, pId, l, idIgnorar = null) => {
-    return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && l !== 'Atendimento Domiciliar' && l !== 'Ginásio Clínico')));
+    return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && l !== 'Atendimento Domiciliar' && l !== 'Ginásio Clínico' && l !== 'Atendimento Hospitalar')));
   };
 
-  const fecharFormularioGeral = () => {
-    setMostrarForm(false);
-    setModoCancelamento(false);
+  const getSalasRecomendadas = () => {
+    const prof = profissionais.find(p => p.id === form.profissionalId);
+    if (!prof) return [];
+    if (prof.categoriaBase === 'fisio') return ['Sala 701', 'Sala 703'];
+    if (prof.categoriaBase === 'to') return ['Sala 704', 'Sala 705'];
+    return [];
   };
 
-  const abrirFormEdicao = async (agend) => {
+  const verificarUsoSala702 = () => {
+    if (form.local !== 'Sala 702') return true;
+    const recomendadas = getSalasRecomendadas();
+    const ocupadas = agendamentos.filter(a => a.data === form.data && a.hora === form.hora && a.status !== 'cancelado').map(a => a.local);
+    const temDisponivel = recomendadas.some(sala => !ocupadas.includes(sala));
+    
+    if (temDisponivel) {
+      return window.confirm("Atenção: Existem salas preferenciais (701/703/704/705) disponíveis para este atendimento. A Sala 702 deve ser usada apenas como último recurso. Deseja prosseguir mesmo assim?");
+    }
+    return true;
+  };
+
+  const fecharFormularioGeral = () => { setMostrarForm(false); setModoCancelamento(false); };
+
+  const abrirFormEdicao = (agend) => {
     setModoCancelamento(false);
     setAgendamentoEditando(agend.id);
     setForm({ pacienteId: agend.pacienteId || '', pacienteNome: agend.paciente || '', tipo: agend.tipo || 'Atendimento', data: agend.data || '', hora: agend.hora || '', local: agend.local || '', profissionalId: agend.profissionalId || '', profissionalNome: agend.profissional || '' });
     setMostrarForm(true);
-    try { const analise = await analisarCapacidadePaciente([]); setInsightCapacidade(analise || "Sem histórico."); } catch (e) { setInsightCapacidade("IA Indisponível."); }
   };
 
   const tentarSalvar = (e) => {
     e.preventDefault();
-    if (agendamentoEditando) {
-      const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-      if (pendentes.length > 0) setModalEscopo({ open: true, type: 'edit' });
-      else aplicarEdicao('unico');
-    } else { processarNovoAgendamento(); }
+    if (!verificarUsoSala702()) return;
+    if (agendamentoEditando) { setModalEscopo({ open: true, type: 'edit' }); } 
+    else { processarNovoAgendamento(); }
   };
 
-  const tentarExcluir = (e) => {
+  const confirmarAtendimento = async (e) => {
     e.preventDefault();
-    const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-    if (pendentes.length > 0) { setModalEscopo({ open: true, type: 'delete' }); } 
-    else { if(window.confirm("Deseja apagar este erro de agendamento? (O registro será excluído permanentemente da base de dados).")) { aplicarExclusao('unico'); } }
-  };
-
-  const confirmarCancelamento = async (motivo) => {
     setCarregandoIA(true);
     try {
-        await updateDoc(doc(db, "agendamentos", agendamentoEditando), { 
-            status: 'cancelado',
-            motivoCancelamento: motivo
-        });
-        alert(`Sessão cancelada. Motivo registrado: ${motivo}`);
+        await updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'confirmado' });
+        alert("Atendimento confirmado com sucesso!");
         fecharFormularioGeral();
-    } catch (error) {
-        alert("Erro ao registrar o cancelamento.");
-    }
-    setCarregandoIA(false);
-  };
-
-  const aplicarExclusao = async (escopo) => {
-    setModalEscopo({ open: false, type: '' }); setCarregandoIA(true);
-    const refAtual = agendamentos.find(a => a.id === agendamentoEditando); let alvos = [refAtual];
-    if (escopo !== 'unico') {
-       const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-       if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
-       else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
-    }
-    await Promise.all(alvos.map(a => deleteDoc(doc(db, "agendamentos", a.id))));
-    alert(`${alvos.length} sessão(ões) excluída(s) permanentemente.`); fecharFormularioGeral(); setCarregandoIA(false);
-  };
-
-  const aplicarEdicao = async (escopo) => {
-    setModalEscopo({ open: false, type: '' }); setCarregandoIA(true);
-    const refAtual = agendamentos.find(a => a.id === agendamentoEditando); let alvos = [refAtual];
-    if (escopo !== 'unico') {
-       const pendentes = agendamentos.filter(a => a.pacienteId === form.pacienteId && a.id !== agendamentoEditando && (!a.status || a.status === 'pendente'));
-       if (escopo === 'futuros') alvos = [...alvos, ...pendentes.filter(a => a.data >= refAtual.data)];
-       else if (escopo === 'todos') alvos = [...alvos, ...pendentes];
-    }
-    let novosBons = []; let novosConflitos = [];
-    for (let alvo of alvos) {
-        const isAtual = alvo.id === agendamentoEditando; const novaData = isAtual ? form.data : alvo.data; 
-        const agNovo = { ...alvo, data: novaData, hora: form.hora, profissionalId: form.profissionalId, profissionalNome: form.profissionalNome, local: form.local, paciente: form.pacienteNome, isEdit: true, originalId: alvo.id };
-        const conflito = verificarConflito(agNovo.data, agNovo.hora, agNovo.profissionalId, agNovo.local, alvo.id);
-        if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito }); else novosBons.push(agNovo);
-    }
-    if (novosConflitos.length > 0) { setAgendamentosBons(novosBons); setFilaConflitos(novosConflitos); setIdxConflito(0); setMostrarForm(false); } 
-    else { await Promise.all(novosBons.map(ag => { const { originalId, isEdit, ...rest } = ag; return updateDoc(doc(db, "agendamentos", originalId), rest); })); fecharFormularioGeral(); }
+    } catch (error) { alert("Erro ao confirmar atendimento."); }
     setCarregandoIA(false);
   };
 
   const processarNovoAgendamento = async () => {
-      setCarregandoIA(true); let novosBons = []; let novosConflitos = [];
+      setCarregandoIA(true);
+      let novosBons = [];
+      let novosConflitos = [];
+
       if (!isLote) {
          const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
          if (conflito) novosConflitos.push({ novo: { ...form }, existente: conflito }); else novosBons.push({ ...form });
       } else {
-         const [ano, mes, diaSplit] = form.data.split('-'); let dt = new Date(ano, mes - 1, diaSplit, 12, 0, 0); let sessoesProcessadas = 0; 
+         const [ano, mes, diaSplit] = form.data.split('-');
+         let dt = new Date(ano, mes - 1, diaSplit, 12, 0, 0);
+         let sessoesProcessadas = 0; 
          while (sessoesProcessadas < loteConfig.quantidade) {
             if (loteConfig.diasSemana.includes(dt.getDay())) {
-               const dIso = obterDataLocalISO(dt); const agNovo = { ...form, data: dIso, pacoteInfo: `${sessoesProcessadas+1}/${loteConfig.quantidade}` };
+               const dIso = obterDataLocalISO(dt);
+               const agNovo = { ...form, data: dIso, pacoteInfo: `${sessoesProcessadas+1}/${loteConfig.quantidade}` };
                const conflito = verificarConflito(dIso, form.hora, form.profissionalId, form.local);
-               if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito }); else novosBons.push(agNovo); sessoesProcessadas++; 
+               if (conflito) novosConflitos.push({ novo: agNovo, existente: conflito }); else novosBons.push(agNovo);
+               sessoesProcessadas++; 
             }
             dt.setDate(dt.getDate() + 1); 
          }
       }
-      if (novosConflitos.length > 0) { setAgendamentosBons(novosBons); setFilaConflitos(novosConflitos); setIdxConflito(0); setMostrarForm(false); } 
-      else { await Promise.all(novosBons.map(ag => addDoc(collection(db, "agendamentos"), { ...ag, paciente: ag.pacienteNome, profissional: ag.profissionalNome, status: 'pendente' }))); fecharFormularioGeral(); }
+
+      if (novosConflitos.length > 0) {
+          setAgendamentosBons(novosBons); setFilaConflitos(novosConflitos); setIdxConflito(0); setMostrarForm(false);
+      } else {
+          await Promise.all(novosBons.map(ag => addDoc(collection(db, "agendamentos"), { ...ag, paciente: ag.pacienteNome, profissional: ag.profissionalNome, status: 'pendente' })));
+          fecharFormularioGeral();
+      }
       setCarregandoIA(false);
   };
 
-  const resolverConflito = async (acao) => {
-    setCarregandoIA(true);
-    if (acao === 'salvar') {
-        if (dualExistente && dualExistente.id) { await updateDoc(doc(db, "agendamentos", dualExistente.id), { data: dualExistente.data, hora: dualExistente.hora, profissionalId: dualExistente.profissionalId, local: dualExistente.local }); }
-        setAgendamentosBons(prev => [...prev, dualNovo]);
-    }
-    const prox = idxConflito + 1;
-    if (prox < filaConflitos.length) { setIdxConflito(prox); } 
-    else {
-        await Promise.all(agendamentosBons.map(ag => {
-            if (ag.isEdit) { const { originalId, isEdit, ...rest } = ag; return updateDoc(doc(db, "agendamentos", originalId), rest); } 
-            else { return addDoc(collection(db, "agendamentos"), { ...ag, paciente: ag.pacienteNome || ag.paciente, profissional: ag.profissionalNome || ag.profissional, status: 'pendente' }); }
-        }));
-        alert("Resolução concluída!"); setFilaConflitos([]); setAgendamentosBons([]);
-    }
-    setCarregandoIA(false);
+  const tentarExcluir = (e) => {
+    e.preventDefault();
+    if(window.confirm("Deseja apagar este erro de agendamento? (O registro será excluído permanentemente).")) { aplicarExclusao('unico'); }
+  };
+
+  const aplicarExclusao = async (escopo) => {
+    await deleteDoc(doc(db, "agendamentos", agendamentoEditando));
+    alert(`Sessão excluída.`); fecharFormularioGeral();
+  };
+
+  const confirmarCancelamento = async (motivo) => {
+    await updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'cancelado', motivoCancelamento: motivo });
+    alert(`Sessão cancelada.`); fecharFormularioGeral();
   };
 
   const rotearParaEvolucao = () => {
-    const agendamento = agendamentos.find(a => a.id === agendamentoEditando);
-    if (agendamento?.pacienteId) {
-      fecharFormularioGeral(); 
-      navegarPara('pacientes', { pacienteId: agendamento.pacienteId, atualizarStatusAgendamento: agendamento.id });
-    }
+    const ag = agendamentos.find(a => a.id === agendamentoEditando);
+    if (ag) { fecharFormularioGeral(); navegarPara('pacientes', { pacienteId: ag.pacienteId, atualizarStatusAgendamento: ag.id }); }
   };
 
-  const dias = (() => { const dArr = []; const inicio = new Date(dataSelecionada); inicio.setDate(inicio.getDate() - inicio.getDay()); for (let i = 0; i < 7; i++) { dArr.push(new Date(inicio)); inicio.setDate(inicio.getDate() + 1); } return dArr; })();
-  const infoData = getInfoData(dataSelecionada); const hoje = obterDataLocalISO(new Date());
-  
-  const agendamentoEditandoInfo = agendamentoEditando ? agendamentos.find(a => a.id === agendamentoEditando) : null;
-
-  // ORDENAÇÃO ALFABÉTICA UNIVERSAL
   const pacientesOrdenados = [...pacientes].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   const profissionaisOrdenados = [...profissionais].sort((a, b) => {
-    if (a.id === user.id) return -1; // Usuário logado sempre no topo
-    if (b.id === user.id) return 1;
+    if (a.id === user.id) return -1;
     return (a.nome || '').localeCompare(b.nome || '');
   });
+
+  const dias = (() => { const dArr = []; const inicio = new Date(dataSelecionada); inicio.setDate(inicio.getDate() - inicio.getDay()); for (let i = 0; i < 7; i++) { dArr.push(new Date(inicio)); inicio.setDate(inicio.getDate() + 1); } return dArr; })();
+  const hoje = obterDataLocalISO(new Date());
 
   if (!user) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-[#00A1FF]" size={40}/></div>;
 
   return (
     <div className="flex flex-col h-full space-y-4 animate-in fade-in relative">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm shrink-0">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-black text-slate-900 uppercase">{infoData.mes}</h2>
-          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-lg text-[10px] font-black uppercase">Semana {infoData.semana}</span>
-        </div>
+        <h2 className="text-xl font-black text-slate-900 uppercase">Agenda Clínica</h2>
         <div className="flex items-center bg-slate-50 p-1.5 rounded-2xl">
           <button onClick={() => { const d = new Date(dataSelecionada); d.setDate(d.getDate()-7); setDataSelecionada(d); }} className="p-2"><ChevronLeft size={18}/></button>
           <button onClick={() => setDataSelecionada(new Date())} className="px-5 py-2 font-black text-[11px] uppercase">Hoje</button>
           <button onClick={() => { const d = new Date(dataSelecionada); d.setDate(d.getDate()+7); setDataSelecionada(d); }} className="p-2"><ChevronRight size={18}/></button>
         </div>
-        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); setModoCancelamento(false); }} className="bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 text-sm"><Plus size={18}/> Novo Agendamento</button>
+        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); }} className="bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 text-sm"><Plus size={18}/> Novo Agendamento</button>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 flex-1 overflow-hidden flex flex-col shadow-sm">
@@ -229,56 +198,61 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md">
               <tr>
-                <th className="p-3 border-b border-r text-left min-w-[140px] sticky left-0 bg-slate-50 z-40"><span className="text-[10px] font-black text-slate-400">Equipe</span></th>
-                {dias.map(dia => {
-                  const iso = obterDataLocalISO(dia);
-                  return (
-                    <th key={iso} className={`p-2 border-b min-w-[150px] text-center ${iso === hoje ? 'bg-blue-50/80 border-b-4 border-b-[#00A1FF]' : ''}`}>
-                      <div className={`text-[9px] font-black uppercase ${iso === hoje ? 'text-[#00A1FF]' : 'text-slate-400'}`}>{DIAS_NOMES[dia.getDay()]}</div>
-                      <div className={`text-lg font-black ${iso === hoje ? 'text-[#0F214A]' : 'text-slate-800'}`}>{dia.getDate()}</div>
-                    </th>
-                  );
-                })}
+                <th className="p-3 border-b border-r text-left min-w-[140px] sticky left-0 bg-slate-50 z-40"><span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Profissional</span></th>
+                {dias.map(dia => (
+                  <th key={dia.toISOString()} className={`p-2 border-b min-w-[150px] text-center ${obterDataLocalISO(dia) === hoje ? 'bg-blue-50/80 border-b-4 border-b-[#00A1FF]' : ''}`}>
+                    <div className="text-[9px] font-black uppercase text-slate-400">{DIAS_NOMES[dia.getDay()]}</div>
+                    <div className="text-lg font-black text-slate-800">{dia.getDate()}</div>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {profissionaisOrdenados.map(prof => (
                 <tr key={prof.id} className={prof.id === user.id ? 'bg-blue-50/30' : ''}>
                   <td className="p-3 border-r border-b sticky left-0 bg-white z-20 shadow-sm align-top">
-                    <div className="font-black text-slate-800 text-[11px] leading-tight truncate flex items-center gap-1">
-                        {prof.id === user.id && <div className="w-2 h-2 bg-green-500 rounded-full" title="Você"></div>}
+                    <div className="font-black text-slate-800 text-[11px] truncate flex items-center gap-1">
+                        {prof.id === user.id && <div className="w-2 h-2 bg-green-500 rounded-full"></div>}
                         {prof.nome}
                     </div>
-                    <div className="text-[8px] font-bold text-slate-400 uppercase mt-0.5 truncate">{prof.categoriaBase}</div>
+                    <div className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">{prof.categoriaBase}</div>
                   </td>
                   {dias.map(dia => {
                     const iso = obterDataLocalISO(dia);
                     const ags = agendamentos.filter(a => a.data === iso && a.profissionalId === prof.id).sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
                     return (
-                      <td key={iso} className={`p-1.5 border-b border-r border-slate-100 align-top min-h-[100px] ${iso === hoje ? 'bg-blue-50/20' : ''}`}>
+                      <td key={iso} className="p-1.5 border-b border-r border-slate-100 align-top min-h-[100px]">
                         {ags.map(ag => {
                           const isCancelado = ag.status === 'cancelado';
+                          const isRealizado = ag.status === 'realizado';
+                          const isConfirmado = ag.status === 'confirmado';
                           const isFalta = ag.motivoCancelamento === 'Falta sem aviso';
 
-                          if (isCancelado) {
-                             return (
-                               <div key={ag.id} onClick={() => abrirFormEdicao(ag)} title={`Cancelado: ${ag.motivoCancelamento}`} className={`p-1.5 mb-1.5 rounded-lg border cursor-pointer transition-all flex items-center gap-1.5 ${isFalta ? 'bg-red-50/80 border-red-200 hover:border-red-400' : 'bg-orange-50/80 border-orange-200 hover:border-orange-400'}`}>
-                                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${isFalta ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{ag.hora}</span>
-                                  <span className={`text-[9px] font-black truncate uppercase ${isFalta ? 'text-red-900' : 'text-orange-900'} line-through decoration-2`}>
-                                     {ag.paciente}
-                                  </span>
-                               </div>
-                             );
-                          }
+                          const cardClasses = isCancelado 
+                            ? (isFalta ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200')
+                            : isRealizado ? 'bg-green-50 border-green-200 opacity-70'
+                            : isConfirmado ? 'bg-[#e5f5ff] border-[#00A1FF] ring-1 ring-[#00A1FF]/30'
+                            : 'bg-white border-blue-100 hover:border-[#00A1FF]';
 
                           return (
-                            <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all shadow-sm flex flex-col ${ag.status === 'realizado' ? 'bg-green-50 border-green-200 opacity-70' : 'bg-white border-blue-100 hover:border-[#00A1FF]'}`}>
-                              <div className="flex justify-between items-start mb-1 gap-1">
-                                <span className="text-[10px] font-black text-slate-700">{ag.hora}</span>
-                                <span className="bg-purple-50 text-purple-700 px-1 rounded flex items-center gap-0.5 text-[8px] font-black shrink-0"><Layers size={8}/> {ag.pacoteInfo || `Sessão ${getNumeroSessao(ag)}`}</span>
-                              </div>
-                              <div className="font-black text-slate-800 text-[10px] leading-tight truncate uppercase mb-1.5">{ag.paciente}</div>
-                              <div className="flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase mt-auto truncate w-full"><MapPin size={8} className="shrink-0"/> <span className="truncate">{ag.local}</span></div>
+                            <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all shadow-sm ${cardClasses}`}>
+                               {isCancelado ? (
+                                  <div className="flex items-center gap-1.5" title={`Cancelado: ${ag.motivoCancelamento}`}>
+                                     <span className="text-[8px] font-black">{ag.hora}</span>
+                                     <span className="text-[8px] font-black truncate uppercase line-through">{ag.paciente}</span>
+                                  </div>
+                               ) : (
+                                  <>
+                                    <div className="flex justify-between items-start mb-1">
+                                       <span className={`text-[10px] font-black ${isConfirmado ? 'text-[#00A1FF]' : 'text-slate-700'}`}>{ag.hora}</span>
+                                       
+                                       {/* A LÂMPADA INDICADORA AGORA LÊ OS EXERCÍCIOS MODULADOS */}
+                                       {ag.exerciciosPlanejados && ag.exerciciosPlanejados.length > 0 && <Lightbulb size={12} className="text-amber-500 fill-amber-400/30" title="Sessão Modulada (Possui exercícios planejados)" />}
+                                    </div>
+                                    <div className={`font-black text-[10px] truncate uppercase ${isConfirmado ? 'text-[#0F214A]' : 'text-slate-800'}`}>{ag.paciente}</div>
+                                    <div className="flex items-center gap-1 text-[7px] font-black text-slate-500 uppercase mt-1"><MapPin size={8}/> {ag.local}</div>
+                                  </>
+                               )}
                             </div>
                           );
                         })}
@@ -291,77 +265,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
           </table>
         </div>
       </div>
-      
-      {modalEscopo.open && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[120]">
-          <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95">
-             <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-2">
-               <Copy className="text-[#00A1FF]" size={20}/> {modalEscopo.type === 'edit' ? 'Alterar Lote?' : 'Apagar Múltiplas Sessões?'}
-             </h3>
-             <p className="text-slate-500 font-medium mb-6 text-sm">
-               {modalEscopo.type === 'edit' ? 'Deseja aplicar a mudança para as outras sessões pendentes deste paciente?' : 'Você deseja excluir também as outras sessões pendentes agendadas para este paciente?'}
-             </p>
-             <div className="space-y-2">
-                <button onClick={() => modalEscopo.type === 'edit' ? aplicarEdicao('unico') : aplicarExclusao('unico')} className="w-full p-4 rounded-xl border border-slate-200 hover:border-[#00A1FF] font-black text-slate-700 hover:bg-blue-50 text-left transition-all text-sm">Apenas nesta sessão</button>
-                <button onClick={() => modalEscopo.type === 'edit' ? aplicarEdicao('futuros') : aplicarExclusao('futuros')} className="w-full p-4 rounded-xl border border-slate-200 hover:border-[#00A1FF] font-black text-slate-700 hover:bg-blue-50 text-left transition-all text-sm">Nesta e nas próximas sessões</button>
-                <button onClick={() => modalEscopo.type === 'edit' ? aplicarEdicao('todos') : aplicarExclusao('todos')} className="w-full p-4 rounded-xl border border-slate-200 hover:border-[#00A1FF] font-black text-slate-700 hover:bg-blue-50 text-left transition-all text-sm">Em todas as sessões pendentes</button>
-             </div>
-             <button onClick={() => setModalEscopo({open: false, type: ''})} className="w-full mt-4 py-3 font-bold text-slate-400 hover:text-slate-600 text-sm">Voltar</button>
-          </div>
-        </div>
-      )}
-
-      {filaConflitos.length > 0 && dualExistente && dualNovo && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-              <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl p-6 animate-in zoom-in-95 flex flex-col max-h-[95vh]">
-                  <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4 shrink-0">
-                     <div>
-                       <h3 className="text-xl font-black text-red-600 flex items-center gap-2"><AlertTriangle size={20}/> Conflito Detectado</h3>
-                       <p className="text-slate-500 font-medium text-xs mt-1">Comparativo (Conflito {idxConflito + 1} de {filaConflitos.length})</p>
-                     </div>
-                     <button onClick={() => { setFilaConflitos([]); setAgendamentosBons([]); }} className="p-2 bg-slate-50 hover:bg-red-50 rounded-full text-slate-400 hover:text-red-500 transition-colors"><X size={18}/></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto custom-scrollbar">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="bg-slate-50 p-5 rounded-[20px] border border-slate-200">
-                              <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest bg-white px-2 py-1 rounded border border-slate-200">Já Agendado</span>
-                              <h4 className="text-lg font-black text-slate-800 mt-3 mb-3">{dualExistente.paciente}</h4>
-                              <div className="space-y-2">
-                                  <input type="date" value={dualExistente.data} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500" />
-                                  <input type="time" value={dualExistente.hora} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500" />
-                                  <select value={dualExistente.profissionalId} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500">
-                                      {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                                  </select>
-                                  <select value={dualExistente.local} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500">
-                                      {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
-                                  </select>
-                              </div>
-                          </div>
-                          <div className="bg-blue-50 p-5 rounded-[20px] border border-blue-400">
-                              <span className="text-[9px] font-black uppercase text-[#00A1FF] tracking-widest bg-blue-100 px-2 py-1 rounded">Tentativa (Novo)</span>
-                              <h4 className="text-lg font-black text-[#0F214A] mt-3 mb-3">{dualNovo.pacienteNome || dualNovo.paciente}</h4>
-                              <div className="space-y-2">
-                                  <input type="date" value={dualNovo.data} onChange={e => setDualNovo({...dualNovo, data: e.target.value})} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none" />
-                                  <input type="time" value={dualNovo.hora} onChange={e => setDualNovo({...dualNovo, hora: e.target.value})} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none" />
-                                  <select value={dualNovo.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setDualNovo({...dualNovo, profissionalId: p.id, profissionalNome: p.nome}); }} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none">
-                                      {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                                  </select>
-                                  <select value={dualNovo.local} onChange={e => setDualNovo({...dualNovo, local: e.target.value})} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none">
-                                      {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
-                                  </select>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-                  <div className="mt-6 flex flex-col md:flex-row gap-3 shrink-0">
-                      <button onClick={() => resolverConflito('pular')} disabled={carregandoIA} className="flex-1 py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-colors text-sm">Pular Janela 2</button>
-                      <button onClick={() => resolverConflito('salvar')} disabled={carregandoIA} className="flex-[2] bg-[#00A1FF] text-white font-black rounded-xl hover:bg-[#0F214A] transition-colors flex items-center justify-center gap-2 shadow-md text-sm">
-                          {carregandoIA ? <Loader2 className="animate-spin" size={16} /> : 'Salvar Alterações'}
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
 
       {mostrarForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
@@ -371,87 +274,73 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                 <button onClick={fecharFormularioGeral} className="p-2 bg-slate-100 rounded-full hover:text-red-500"><X size={18}/></button>
              </div>
              
-             {agendamentoEditandoInfo?.status === 'cancelado' && (
-                 <div className="mb-6 p-4 bg-slate-100 text-slate-600 rounded-2xl border border-slate-200 text-sm font-bold flex flex-col gap-1">
-                     <div className="flex items-center gap-2 text-slate-800"><Ban size={18}/> Sessão Cancelada</div>
-                     <span className="text-xs text-slate-500 font-medium">Motivo: {agendamentoEditandoInfo.motivoCancelamento}</span>
-                 </div>
-             )}
+             {agendamentoEditando && !modoCancelamento && (
+               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+                 <button onClick={rotearParaEvolucao} className="bg-green-600 text-white py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs shadow-md hover:bg-green-700 transition-colors">
+                    <FileText size={14}/> Prontuário
+                 </button>
 
-             {agendamentoEditando && !modoCancelamento && agendamentoEditandoInfo?.status !== 'cancelado' && (
-               <div className="grid grid-cols-3 gap-2 mb-6">
-                 <button onClick={rotearParaEvolucao} className="col-span-3 sm:col-span-1 bg-green-600 text-white py-3 rounded-xl font-black flex justify-center items-center gap-2 shadow-md text-sm hover:bg-green-700 transition-colors">
-                    <FileText size={16}/> Prontuário
+                 <button onClick={confirmarAtendimento} disabled={carregandoIA} className="bg-blue-50 text-blue-600 py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs border border-blue-200 hover:bg-blue-100 transition-colors">
+                    {carregandoIA ? <Loader2 size={14} className="animate-spin"/> : <CheckCircle2 size={14}/>} Confirmar
                  </button>
                  
-                 <button onClick={() => setModoCancelamento(true)} className="col-span-3 sm:col-span-1 bg-orange-50 text-orange-600 py-3 rounded-xl font-bold flex justify-center items-center gap-2 text-sm hover:bg-orange-100 transition-colors border border-orange-200">
-                    <Ban size={16}/> Cancelar
+                 <button onClick={() => setModoCancelamento(true)} className="bg-orange-50 text-orange-600 py-3 rounded-xl font-bold flex justify-center items-center gap-1.5 text-xs border border-orange-200 hover:bg-orange-100 transition-colors">
+                    <Ban size={14}/> Cancelar
                  </button>
 
-                 <button onClick={tentarExcluir} className="col-span-3 sm:col-span-1 bg-red-50 text-red-600 py-3 rounded-xl font-bold flex justify-center items-center gap-2 text-sm hover:bg-red-100 transition-colors border border-red-200">
-                    <Trash2 size={16}/> Apagar
+                 <button onClick={tentarExcluir} className="bg-red-50 text-red-600 py-3 rounded-xl font-bold flex justify-center items-center gap-1.5 text-xs border border-red-200 hover:bg-red-100 transition-colors">
+                    <Trash2 size={14}/> Apagar
                  </button>
                </div>
              )}
 
-             {modoCancelamento && (
-                 <div className="mb-6 p-5 bg-orange-50 border border-orange-200 rounded-2xl animate-in fade-in zoom-in-95">
-                     <h4 className="font-black text-orange-800 mb-3 flex items-center gap-2"><Ban size={18}/> Qual o motivo do cancelamento?</h4>
+             {modoCancelamento ? (
+                 <div className="mb-6 p-5 bg-orange-50 border border-orange-200 rounded-2xl animate-in zoom-in-95">
+                     <h4 className="font-black text-orange-800 mb-3 flex items-center gap-2"><Ban size={18}/> Qual o motivo?</h4>
                      <div className="space-y-2">
-                         <button onClick={() => confirmarCancelamento('Antecedência > 24h')} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-slate-700 hover:border-orange-400 hover:shadow-md transition-all text-sm">
-                             Paciente cancelou com mais de 24 horas
-                         </button>
-                         <button onClick={() => confirmarCancelamento('Antecedência > 12h')} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-slate-700 hover:border-orange-400 hover:shadow-md transition-all text-sm">
-                             Paciente cancelou com mais de 12 horas
-                         </button>
-                         <button onClick={() => confirmarCancelamento('Falta sem aviso')} className="w-full text-left p-3 bg-white border border-red-200 rounded-xl font-black text-red-600 hover:border-red-400 hover:bg-red-50 hover:shadow-md transition-all text-sm">
-                             Falta não agendada / Sem aviso prévio
-                         </button>
+                         <button onClick={() => confirmarCancelamento('Antecedência > 24h')} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-sm">Paciente cancelou com mais de 24h</button>
+                         <button onClick={() => confirmarCancelamento('Antecedência > 12h')} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-sm">Paciente cancelou com mais de 12h</button>
+                         <button onClick={() => confirmarCancelamento('Falta sem aviso')} className="w-full text-left p-3 bg-white border border-red-200 rounded-xl font-black text-red-600 text-sm">Falta não agendada / Sem aviso</button>
                      </div>
-                     <button onClick={() => setModoCancelamento(false)} className="w-full mt-4 p-3 font-bold text-slate-500 hover:text-slate-800 text-sm bg-slate-200 rounded-xl transition-colors">Desistir (Manter Agendado)</button>
+                     <button onClick={() => setModoCancelamento(false)} className="w-full mt-4 p-3 font-bold text-slate-500 text-sm">Voltar</button>
                  </div>
-             )}
-
-             {!modoCancelamento && (
+             ) : (
                  <form onSubmit={tentarSalvar} className="space-y-3">
-                    <select required className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.pacienteId} onChange={e => setForm({...form, pacienteId: e.target.value, pacienteNome: pacientes.find(p=>p.id===e.target.value)?.nome})}>
+                    <select required className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent" value={form.pacienteId} onChange={e => setForm({...form, pacienteId: e.target.value, pacienteNome: pacientes.find(p=>p.id===e.target.value)?.nome})}>
                       <option value="">Selecionar Paciente...</option>
                       {pacientesOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                     </select>
+
                     <div className="grid grid-cols-2 gap-3">
-                      <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p.nome}); }}>
-                          <option value="">Fisioterapeuta...</option>
+                      <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p.nome}); }}>
+                          <option value="">Fisioterapeuta / TO...</option>
                           {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                       </select>
-                      <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
-                          <option value="">Local...</option>{LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
+
+                      <select required className={`p-3 rounded-xl font-bold text-sm outline-none border-2 ${getSalasRecomendadas().includes(form.local) ? 'border-green-200 bg-green-50' : 'bg-slate-50 border-transparent'}`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
+                          <option value="">Selecionar Sala...</option>
+                          {LOCAIS.map(l => (
+                            <option key={l} value={l}>
+                              {l} {getSalasRecomendadas().includes(l) ? '⭐' : ''} {l === 'Sala 702' ? '(Reserva)' : ''}
+                            </option>
+                          ))}
                       </select>
                     </div>
+
+                    {form.profissionalId && (
+                      <div className="px-3 py-2 bg-blue-50 rounded-lg text-[10px] font-bold text-blue-700 flex items-center gap-2">
+                        <MapPin size={12}/> Sugestão: {getSalasRecomendadas().join(' ou ')}. Use a 702 apenas se necessário.
+                      </div>
+                    )}
+
                     <div className="p-5 bg-slate-50 rounded-[20px] border border-slate-100">
-                       {!agendamentoEditando && (
-                         <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                           <span className="font-black text-xs text-slate-800">Agendar Lote de Sessões</span>
-                           <label className="relative inline-flex items-center cursor-pointer">
-                              <input type="checkbox" className="sr-only peer" checked={isLote} onChange={e => setIsLote(e.target.checked)} />
-                              <div className="w-9 h-5 bg-slate-300 rounded-full peer peer-checked:bg-[#00A1FF]"></div>
-                           </label>
-                         </div>
-                       )}
                        <div className="grid grid-cols-2 gap-3">
-                          <input type="date" className="p-3 bg-white rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.data} onChange={e => setForm({...form, data: e.target.value})} />
-                          <input type="time" className="p-3 bg-white rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} />
+                          <input type="date" className="p-3 bg-white rounded-xl font-bold text-sm" value={form.data} onChange={e => setForm({...form, data: e.target.value})} />
+                          <input type="time" className="p-3 bg-white rounded-xl font-bold text-sm" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} />
                        </div>
-                       {isLote && !agendamentoEditando && (
-                         <div className="mt-3 pt-3 animate-in fade-in">
-                            <div className="flex gap-1.5 mb-3">{[1,2,3,4,5,6].map(d => (
-                                <button key={d} type="button" onClick={() => setLoteConfig(prev => ({ ...prev, diasSemana: prev.diasSemana.includes(d) ? prev.diasSemana.filter(x=>x!==d) : [...prev.diasSemana, d] }))} className={`flex-1 py-2 rounded-lg font-black text-[10px] border transition-all ${loteConfig.diasSemana.includes(d) ? 'bg-[#00A1FF] border-[#00A1FF] text-white' : 'bg-white border-slate-200 text-slate-400'}`}>{DIAS_NOMES[d]}</button>
-                              ))}</div>
-                            <input type="number" min="1" placeholder="Qtd. Sessões" className="w-full p-3 rounded-lg border-2 border-transparent outline-none focus:border-[#00A1FF] font-bold text-sm text-[#0F214A]" value={loteConfig.quantidade} onChange={e => setLoteConfig({...loteConfig, quantidade: parseInt(e.target.value)})}/>
-                         </div>
-                       )}
                     </div>
-                    <button type="submit" disabled={carregandoIA} className="w-full bg-[#0F214A] text-white py-4 rounded-xl font-black text-sm hover:bg-[#00A1FF] transition-all flex items-center justify-center shadow-lg mt-4">
-                        {carregandoIA ? <Loader2 className="animate-spin" /> : (agendamentoEditando ? 'Guardar Alterações' : 'Confirmar Agendamento')}
+                    <button type="submit" disabled={carregandoIA} className="w-full bg-[#0F214A] text-white py-4 rounded-xl font-black text-sm hover:bg-[#00A1FF] transition-all">
+                        {carregandoIA ? <Loader2 className="animate-spin mx-auto" /> : (agendamentoEditando ? 'Guardar Alterações' : 'Confirmar Agendamento')}
                     </button>
                  </form>
              )}
