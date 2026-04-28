@@ -42,7 +42,6 @@ export default function Equipe({ user }) {
     }
   };
 
-  // NOVA FUNÇÃO: Reset de Senha
   const resetarSenha = async (prof) => {
     if (window.confirm(`Deseja forçar o reset de senha de ${prof.nome} para a senha padrão 'evoluti123'?`)) {
         try {
@@ -172,63 +171,69 @@ export default function Equipe({ user }) {
         <p className="text-slate-500 font-medium mt-1">Aprove acessos, defina Gestores e planeje férias com redistribuição inteligente.</p>
       </div>
 
-      <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr><th className="p-6 text-[10px] font-black text-slate-400 uppercase">Profissional & Cargos</th><th className="p-6 text-[10px] font-black text-slate-400 uppercase">Status / Contato</th><th className="p-6 text-[10px] font-black text-slate-400 uppercase text-right">Ações</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {profissionaisOrdenados.map(p => (
-              <tr key={p.id} className={p.status === 'oculto' ? 'opacity-50 bg-slate-50' : 'hover:bg-blue-50/30'}>
-                <td className="p-6">
-                  <div className="font-black text-slate-900 text-lg flex items-center flex-wrap gap-2">
-                      {p.nome} 
-                      {p.id === user.id && <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded uppercase">Você</span>}
-                      {p.role === 'gestor_clinico' && <span className="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded uppercase flex items-center gap-1"><Star size={10}/> Gestor</span>}
-                      {p.role === 'admin_fin' && <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded uppercase">Financeiro</span>}
-                  </div>
-                  <div className="text-xs text-slate-500 font-bold uppercase mt-1">{p.categoriaBase} • Reg: {p.registro || 'N/D'}</div>
-                </td>
-                <td className="p-6">
-                   <div className="mb-2 text-xs font-bold text-slate-500">{p.email}</div>
-                   {p.status === 'pendente' && <span className="text-amber-600 bg-amber-50 px-3 py-1 rounded-lg font-black text-xs uppercase flex w-fit items-center"><AlertTriangle size={14} className="mr-1"/> Pendente</span>}
-                   {p.status === 'ativo' && <span className="text-green-600 bg-green-50 px-3 py-1 rounded-lg font-black text-xs uppercase flex w-fit items-center"><CheckCircle2 size={14} className="mr-1"/> Ativo</span>}
-                   {p.status === 'ferias' && <span className="text-blue-600 bg-blue-50 px-3 py-1 rounded-lg font-black text-xs uppercase flex w-fit items-center"><Palmtree size={14} className="mr-1"/> Em Férias</span>}
-                   {p.status === 'oculto' && <span className="text-slate-500 bg-slate-200 px-3 py-1 rounded-lg font-black text-xs uppercase">Desativado</span>}
-                </td>
-                <td className="p-6 text-right">
-                   {p.id !== user.id && (
-                     <div className="flex items-center justify-end gap-2">
-                        {p.status === 'pendente' && (
-                            <>
-                                <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors" title="Aprovar"><UserCheck size={18}/></button>
-                                <button onClick={() => recusarCadastro(p.id)} className="p-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors" title="Recusar e Apagar"><UserX size={18}/></button>
-                            </>
-                        )}
-                        
-                        {p.status !== 'oculto' && p.status !== 'pendente' && (
-                            <>
-                                <button onClick={() => setEditandoProf({...p})} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors" title="Editar Dados"><Edit3 size={18}/></button>
-                                {/* BOTÃO DE RESET DE SENHA */}
-                                <button onClick={() => resetarSenha(p)} className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors" title="Forçar Reset de Senha"><KeyRound size={18}/></button>
-                            </>
-                        )}
-
-                        {p.status === 'ativo' && <button onClick={() => setFeriasSetup({open: true, prof: p, dataInicio: '', dataFim: '', preview: null, msgErro: ''})} className="p-2 bg-[#e5f5ff] text-[#00A1FF] rounded-xl hover:bg-blue-100 transition-colors" title="Planejar Férias"><Palmtree size={18}/></button>}
-                        {p.status === 'ferias' && <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors font-bold text-xs" title="Retornar">Regressar</button>}
-                        
-                        {(p.status !== 'oculto' && p.status !== 'pendente') ? (
-                            <button onClick={() => {if(window.confirm("Desativar e ocultar profissional?")) alterarStatus(p, 'oculto')}} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors" title="Desativar"><UserX size={18}/></button>
-                        ) : p.status === 'oculto' ? (
-                            <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 font-bold text-xs">Reativar</button>
-                        ) : null}
-                     </div>
-                   )}
-                </td>
+      {/* 🔪 CIRURGIA: CASULO RESPONSIVO PARA A TABELA (overflow-x-auto min-w-800px) */}
+      <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm w-full relative">
+        <div className="w-full overflow-x-auto custom-scrollbar rounded-[32px]">
+          <table className="w-full text-left min-w-[800px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase">Profissional & Cargos</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase">Status / Contato</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase text-right">Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {profissionaisOrdenados.map(p => (
+                <tr key={p.id} className={p.status === 'oculto' ? 'opacity-50 bg-slate-50' : 'hover:bg-blue-50/30'}>
+                  <td className="p-6">
+                    <div className="font-black text-slate-900 text-lg flex items-center flex-wrap gap-2">
+                        {p.nome} 
+                        {p.id === user.id && <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded uppercase">Você</span>}
+                        {p.role === 'gestor_clinico' && <span className="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded uppercase flex items-center gap-1"><Star size={10}/> Gestor</span>}
+                        {p.role === 'admin_fin' && <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded uppercase">Financeiro</span>}
+                    </div>
+                    <div className="text-xs text-slate-500 font-bold uppercase mt-1">{p.categoriaBase} • Reg: {p.registro || 'N/D'}</div>
+                  </td>
+                  <td className="p-6">
+                     <div className="mb-2 text-xs font-bold text-slate-500">{p.email}</div>
+                     {p.status === 'pendente' && <span className="text-amber-600 bg-amber-50 px-3 py-1 rounded-lg font-black text-xs uppercase flex w-fit items-center"><AlertTriangle size={14} className="mr-1"/> Pendente</span>}
+                     {p.status === 'ativo' && <span className="text-green-600 bg-green-50 px-3 py-1 rounded-lg font-black text-xs uppercase flex w-fit items-center"><CheckCircle2 size={14} className="mr-1"/> Ativo</span>}
+                     {p.status === 'ferias' && <span className="text-blue-600 bg-blue-50 px-3 py-1 rounded-lg font-black text-xs uppercase flex w-fit items-center"><Palmtree size={14} className="mr-1"/> Em Férias</span>}
+                     {p.status === 'oculto' && <span className="text-slate-500 bg-slate-200 px-3 py-1 rounded-lg font-black text-xs uppercase">Desativado</span>}
+                  </td>
+                  <td className="p-6 text-right">
+                     {p.id !== user.id && (
+                       <div className="flex items-center justify-end gap-2">
+                          {p.status === 'pendente' && (
+                              <>
+                                  <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors" title="Aprovar"><UserCheck size={18}/></button>
+                                  <button onClick={() => recusarCadastro(p.id)} className="p-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors" title="Recusar e Apagar"><UserX size={18}/></button>
+                              </>
+                          )}
+                          
+                          {p.status !== 'oculto' && p.status !== 'pendente' && (
+                              <>
+                                  <button onClick={() => setEditandoProf({...p})} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors" title="Editar Dados"><Edit3 size={18}/></button>
+                                  <button onClick={() => resetarSenha(p)} className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors" title="Forçar Reset de Senha"><KeyRound size={18}/></button>
+                              </>
+                          )}
+
+                          {p.status === 'ativo' && <button onClick={() => setFeriasSetup({open: true, prof: p, dataInicio: '', dataFim: '', preview: null, msgErro: ''})} className="p-2 bg-[#e5f5ff] text-[#00A1FF] rounded-xl hover:bg-blue-100 transition-colors" title="Planejar Férias"><Palmtree size={18}/></button>}
+                          {p.status === 'ferias' && <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors font-bold text-xs" title="Retornar">Regressar</button>}
+                          
+                          {(p.status !== 'oculto' && p.status !== 'pendente') ? (
+                              <button onClick={() => {if(window.confirm("Desativar e ocultar profissional?")) alterarStatus(p, 'oculto')}} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors" title="Desativar"><UserX size={18}/></button>
+                          ) : p.status === 'oculto' ? (
+                              <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 font-bold text-xs">Reativar</button>
+                          ) : null}
+                       </div>
+                     )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {editandoProf && (

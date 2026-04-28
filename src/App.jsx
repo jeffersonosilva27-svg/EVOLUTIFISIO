@@ -59,7 +59,6 @@ const dispararPush = (titulo, corpo) => {
   }
 };
 
-// --- NOVOS TUTORIAIS DIRECIONADOS (Mascote: Evo) ---
 const TUTORIAL_STEPS_FISIO = [
   { titulo: "Bem-vindo ao Evoluti!", texto: "Sou o Evo, seu assistente inteligente. Vou guiá-lo pelas ferramentas clínicas.", view: 'dashboard' },
   { titulo: "Sua Fila Pessoal (7 Dias)", texto: "No seu painel Início, veja os próximos pacientes para os próximos 7 dias. Arraste para o lado ou use as setas para navegar.", view: 'dashboard' },
@@ -121,7 +120,6 @@ function MainApp() {
   const [tutorialStep, setTutorialStep] = useState(-1);
   const [showFaltasModal, setShowFaltasModal] = useState(false);
 
-  // Estados Carrossel
   const [carouselIdx, setCarouselIdx] = useState(0);
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
@@ -239,7 +237,6 @@ function MainApp() {
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
-    // Apenas Gestor vê a aba Diário no menu lateral
     { id: 'diario', icon: ClipboardList, label: 'Diário (Recepção)', roles: ['gestor_clinico'] },
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
@@ -254,7 +251,6 @@ function MainApp() {
   };
   const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
 
-  // RENDERIZAR PAINEL RECEPÇÃO / DIÁRIO
   const renderRecepcaoDashboard = () => {
     const hojeIso = obterDataLocalISO(new Date());
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
@@ -316,19 +312,14 @@ function MainApp() {
     );
   };
   
-  // RENDERIZAR PAINEL CLÍNICO / GESTOR
   const renderDashboard = () => {
-    // Se a view atual for o Diário (apenas gestor pode clicar), renderiza a visão da recepção
     if (currentView === 'diario') return renderRecepcaoDashboard();
-    
-    // Se for receção, renderiza a visão da recepção diretamente no dashboard
     if (user?.role === 'recepcao' || user?.role === 'admin_fin') return renderRecepcaoDashboard();
 
     const hojeIso = obterDataLocalISO(new Date());
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
     
-    // --- LÓGICA DE FILA PESSOAL (7 DIAS CORRIDOS) ---
     const seteDias = new Date();
     seteDias.setDate(seteDias.getDate() + 7);
     const seteDiasIso = obterDataLocalISO(seteDias);
@@ -364,7 +355,6 @@ function MainApp() {
     const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
     
-    // Gestão
     const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
     
@@ -374,6 +364,9 @@ function MainApp() {
     const faltasCriticasMes = agendaMes.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
     const taxaCritica = totalMes > 0 ? ((faltasCriticasMes.length / totalMes) * 100).toFixed(1) : 0;
 
+    const isClinico = ['fisio', 'to', 'gestor_clinico'].includes(user?.role);
+    const isAdminOrRecepcao = ['recepcao', 'admin_fin', 'gestor_clinico'].includes(user?.role);
+    
     const exerciciosDaSessao = proximoAtendimento?.exerciciosPlanejados || [];
     const planoProximoPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
     const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoProximoPaciente;
@@ -390,100 +383,101 @@ function MainApp() {
               <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das atividades de hoje.</p>
             </div>
 
-            <div className="space-y-6">
-                {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas Pessoais</h3>}
-                
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                    {/* CARROSSEL NO CARD DE PRÓXIMO PACIENTE (Até 7 dias) */}
-                    <div 
-                        className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]"
-                        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEndHandler}
-                    >
-                        {proximosPendentesMeus.length > 1 && (
-                            <>
-                              {carouselIdx > 0 && <button onClick={() => setCarouselIdx(c => c-1)} className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronLeft className="text-white"/></button>}
-                              {carouselIdx < proximosPendentesMeus.length - 1 && <button onClick={() => setCarouselIdx(c => c+1)} className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronRight className="text-white"/></button>}
-                            </>
-                        )}
-                        
-                        <div className="relative z-10 px-0 md:px-8">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal {proximosPendentesMeus.length > 1 && `(${carouselIdx + 1} de ${proximosPendentesMeus.length})`}</p>
-                            {proximoAtendimento ? (
-                                <>
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <h2 className="text-4xl md:text-5xl font-black truncate">{proximoAtendimento.paciente}</h2>
-                                        {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Confirmado</span>}
-                                    </div>
-                                    <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                        <span className={`px-3 py-1 rounded-xl font-black text-sm ${isHoraDaConsulta ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>
-                                            {!isHoje && <span className="mr-1 text-xs opacity-80">{new Date(proximoAtendimento.data).toLocaleDateString('pt-BR')} -</span>}
-                                            {proximoAtendimento.hora} {isHoraDaConsulta && '(Chegou a hora)'}
-                                        </span>
-                                        <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
-                                    </p>
-                                    
-                                    {listaExibicao.length > 0 && (
-                                        <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
-                                            <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
-                                                {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada</> : <><Dumbbell size={14}/> Plano Geral</>}
-                                            </p>
-                                            <div className="space-y-2">
-                                                {listaExibicao.map((ex, i) => (
-                                                    <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
-                                                        <span className="font-bold text-white tracking-wide truncate pr-2">{ex.nome}</span>
-                                                        <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-auto shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
-                                                            {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <div><h2 className="text-3xl font-black mb-2 text-slate-400">Fila Limpa!</h2><p className="text-slate-500 font-medium">Você concluiu os seus atendimentos nos próximos dias.</p></div>
-                            )}
-                        </div>
-                        
-                        {proximoAtendimento && (
-                            <div className="relative z-10 mt-8 flex flex-wrap gap-3 px-0 md:px-8">
-                                <button onClick={async () => {
-                                    if (isHoraDaConsulta && proximoAtendimento.status !== 'confirmado' && proximoAtendimento.status !== 'realizado') {
-                                        await updateDoc(doc(db, "agendamentos", proximoAtendimento.id), { status: 'confirmado' });
-                                    }
-                                    navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id });
-                                }} className={`${isHoraDaConsulta ? 'bg-[#FFCC00] text-[#0F214A] hover:bg-yellow-400 shadow-[0_4px_20px_rgba(255,204,0,0.3)]' : 'bg-white text-[#0F214A] hover:bg-slate-200 shadow-lg'} px-8 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center gap-2 w-fit`}>
-                                    {isHoraDaConsulta ? 'Iniciar Atendimento' : 'Preparar Ficha'} <ArrowRight size={16}/>
-                                </button>
-                            </div>
-                        )}
-                        
-                        {proximosPendentesMeus.length > 1 && (
-                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 md:hidden z-20">
-                                {proximosPendentesMeus.map((_, i) => (
-                                    <div key={i} className={`h-1.5 rounded-full transition-all ${i === carouselIdx ? 'w-4 bg-[#FFCC00]' : 'w-1.5 bg-white/30'}`} />
-                                ))}
-                            </div>
-                        )}
-                        
-                        <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
-                    </div>
+            {isClinico && (
+                <div className="space-y-6">
+                    {isAdminOrRecepcao && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas Pessoais</h3>}
                     
-                    <div className="flex flex-col gap-6">
-                        <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-[#00A1FF] cursor-pointer group">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14} className="group-hover:text-[#00A1FF] transition-colors"/> Suas Sessões Hoje</p>
-                            <h3 className="text-4xl font-black text-[#0F214A] group-hover:text-[#00A1FF] transition-colors">{minhaAgendaHoje.length}</h3>
-                            <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
-                            <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                        <div 
+                            className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]"
+                            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEndHandler}
+                        >
+                            {proximosPendentesMeus.length > 1 && (
+                                <>
+                                  {carouselIdx > 0 && <button onClick={() => setCarouselIdx(c => c-1)} className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronLeft className="text-white"/></button>}
+                                  {carouselIdx < proximosPendentesMeus.length - 1 && <button onClick={() => setCarouselIdx(c => c+1)} className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronRight className="text-white"/></button>}
+                                </>
+                            )}
+                            
+                            <div className="relative z-10 px-0 md:px-8">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal {proximosPendentesMeus.length > 1 && `(${carouselIdx + 1} de ${proximosPendentesMeus.length})`}</p>
+                                {proximoAtendimento ? (
+                                    <>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <h2 className="text-4xl md:text-5xl font-black truncate">{proximoAtendimento.paciente}</h2>
+                                            {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Confirmado</span>}
+                                        </div>
+                                        <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
+                                            <span className={`px-3 py-1 rounded-xl font-black text-sm ${isHoraDaConsulta ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>
+                                                {!isHoje && <span className="mr-1 text-xs opacity-80">{new Date(proximoAtendimento.data).toLocaleDateString('pt-BR')} -</span>}
+                                                {proximoAtendimento.hora} {isHoraDaConsulta && '(Chegou a hora)'}
+                                            </span>
+                                            <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
+                                        </p>
+                                        
+                                        {listaExibicao.length > 0 && (
+                                            <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
+                                                <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
+                                                    {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada</> : <><Dumbbell size={14}/> Plano Geral</>}
+                                                </p>
+                                                <div className="space-y-2">
+                                                    {listaExibicao.map((ex, i) => (
+                                                        <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
+                                                            <span className="font-bold text-white tracking-wide truncate pr-2">{ex.nome}</span>
+                                                            <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-auto shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
+                                                                {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div><h2 className="text-3xl font-black mb-2 text-slate-400">Fila Limpa!</h2><p className="text-slate-500 font-medium">Você concluiu os seus atendimentos nos próximos dias.</p></div>
+                                )}
+                            </div>
+                            
+                            {proximoAtendimento && (
+                                <div className="relative z-10 mt-8 flex flex-wrap gap-3 px-0 md:px-8">
+                                    <button onClick={async () => {
+                                        if (isHoraDaConsulta && proximoAtendimento.status !== 'confirmado' && proximoAtendimento.status !== 'realizado') {
+                                            await updateDoc(doc(db, "agendamentos", proximoAtendimento.id), { status: 'confirmado' });
+                                        }
+                                        navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id });
+                                    }} className={`${isHoraDaConsulta ? 'bg-[#FFCC00] text-[#0F214A] hover:bg-yellow-400 shadow-[0_4px_20px_rgba(255,204,0,0.3)]' : 'bg-white text-[#0F214A] hover:bg-slate-200 shadow-lg'} px-8 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center gap-2 w-fit`}>
+                                        {isHoraDaConsulta ? 'Iniciar Atendimento' : 'Preparar Ficha'} <ArrowRight size={16}/>
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {proximosPendentesMeus.length > 1 && (
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 md:hidden z-20">
+                                    {proximosPendentesMeus.map((_, i) => (
+                                        <div key={i} className={`h-1.5 rounded-full transition-all ${i === carouselIdx ? 'w-4 bg-[#FFCC00]' : 'w-1.5 bg-white/30'}`} />
+                                    ))}
+                                </div>
+                            )}
+                            
+                            <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
                         </div>
-                        <div onClick={() => navegarPara('pacientes')} className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-300 cursor-pointer group">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
-                            <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
-                            <p className="text-xs font-bold text-blue-600/70 mt-2 group-hover:text-blue-800 transition-colors">Sessões atrasadas sem assinatura</p>
+                        
+                        <div className="flex flex-col gap-6">
+                            <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-[#00A1FF] cursor-pointer group">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14} className="group-hover:text-[#00A1FF] transition-colors"/> Suas Sessões Hoje</p>
+                                <h3 className="text-4xl font-black text-[#0F214A] group-hover:text-[#00A1FF] transition-colors">{minhaAgendaHoje.length}</h3>
+                                <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
+                                <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                            </div>
+                            <div onClick={() => navegarPara('pacientes')} className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-300 cursor-pointer group">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
+                                <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
+                                <p className="text-xs font-bold text-blue-600/70 mt-2 group-hover:text-blue-800 transition-colors">Sessões atrasadas sem assinatura</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {user?.role === 'gestor_clinico' && (
                 <div className="pt-8 border-t border-slate-200 space-y-6">
@@ -630,7 +624,7 @@ function MainApp() {
         </div>
       </aside>
       
-      <main className={`flex-1 flex flex-col min-w-0 ${isModalActive ? 'pb-0' : 'pb-24'} md:pb-0 h-full overflow-y-auto print:overflow-visible transition-all duration-300`}>
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto print:overflow-visible relative">
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40 print:hidden">
            <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-2 md:gap-3 ml-auto">
@@ -641,8 +635,10 @@ function MainApp() {
               <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors ml-1"><LogOut size={20}/></button>
            </div>
         </header>
-        <div className="p-4 md:p-8 h-full print:p-0">
-           <div className="max-w-[1600px] mx-auto">
+        
+        {/* 🔪 CIRURGIA: BLINDAGEM CONTRA A BARRA INFERIOR NO MOBILE */}
+        <div className={`p-4 md:p-8 min-h-full print:p-0 transition-all ${isModalActive ? 'pb-6' : 'pb-32'} md:pb-8 flex flex-col`}>
+           <div className="max-w-[1600px] mx-auto w-full">
               {currentView === 'dashboard' || currentView === 'diario' ? renderDashboard() : null}
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} setModalActive={setIsModalActive} />}
               {currentView === 'pacientes' && <Pacientes pacientes={pacientes} hasAccess={hasAccess} user={user} navParams={navParams} setModalActive={setIsModalActive} />}
