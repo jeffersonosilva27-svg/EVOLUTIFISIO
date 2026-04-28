@@ -21,6 +21,14 @@ const obterDataLocalISO = (data) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+// Nova função blindada contra o fuso horário do Brasil
+const formatarDataAgenda = (dataString) => {
+  if (!dataString) return '';
+  const partes = dataString.split('-');
+  if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  return dataString;
+};
+
 export default function Pacientes({ pacientes, hasAccess, user, navParams, setModalActive }) {
   const [termoBusca, setTermoBusca] = useState('');
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -58,6 +66,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const [novoConsumo, setNovoConsumo] = useState({ itemId: '', quantidade: 1 });
 
   const paramConsumido = useRef(false);
+
+  const nomeProfissionalLogado = user?.nome || user?.name || 'Equipe';
 
   useEffect(() => {
     if (navParams?.pacienteId && !paramConsumido.current && pacientes.length > 0) {
@@ -175,7 +185,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       const unsubAg = onSnapshot(qAg, (snapshot) => {
           const ags = snapshot.docs
             .map(d => ({id: d.id, ...d.data()}))
-            .filter(a => a.status === 'pendente' || a.status === 'confirmado')
+            .filter(a => (a.status === 'pendente' || a.status === 'confirmado') && a.profissionalId === user?.id)
             .sort((a,b) => new Date(a.data) - new Date(b.data));
           setAgendamentosFuturos(ags);
       });
@@ -183,7 +193,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       setLaudoExame(''); setAnaliseIA(''); setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(0);
       return () => { unsubEvo(); unsubPlano(); unsubConsumos(); unsubAg(); };
     }
-  }, [pacienteSelecionado]);
+  }, [pacienteSelecionado, user]);
 
   const handleSelectModulacao = (id) => {
       setSessaoModulacaoId(id);
@@ -235,10 +245,20 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     if (!novoSoap) return alert("Escreva algo antes de salvar.");
     try {
       if (editandoEvolucaoId) {
-        await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), { texto: novoSoap, metricaPain, dataEdicao: new Date().toISOString() });
+        await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), { 
+            texto: novoSoap, 
+            metricaPain, 
+            dataEdicao: new Date().toISOString() 
+        });
         alert("Evolução atualizada com sucesso!");
       } else {
-        await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), { texto: novoSoap, data: new Date().toISOString(), profissional: user?.name || user?.nome || 'Equipe', profissionalId: user?.id, metricaPain });
+        await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), { 
+            texto: novoSoap, 
+            data: new Date().toISOString(), 
+            profissional: nomeProfissionalLogado,
+            profissionalId: user?.id, 
+            metricaPain 
+        });
         if (navParams?.atualizarStatusAgendamento) await updateDoc(doc(db, "agendamentos", navParams.atualizarStatusAgendamento), { status: 'realizado' });
         alert("Evolução assinada digitalmente com sucesso!");
       }
@@ -267,7 +287,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           ...novoExercicio, 
           nome: existeBanco ? existeBanco.nome : nomeFormatado,
           dataInclusao: new Date().toISOString(), 
-          profissional: user?.name || user?.nome || 'Equipe' 
+          profissional: nomeProfissionalLogado
       });
       
       setNovoExercicio({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
@@ -302,7 +322,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
               precoUnitario: precoVenda,
               precoTotal: precoTotal,
               data: new Date().toISOString(),
-              profissional: user?.name || user?.nome || 'Equipe',
+              profissional: nomeProfissionalLogado,
               profissionalId: user?.id
           });
 
@@ -335,7 +355,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
   const estoqueOrdenado = [...estoqueGeral].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
-  // ABA RESTRITA (Agora Recepção tem acesso à aba Financeira do Paciente)
   const abasDisponiveis = [
     { id: 'historico', icon: FileText, label: 'Histórico Clínico', restritoFin: false, restritoClinico: false },
     { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restritoFin: false, restritoClinico: true },
@@ -390,7 +409,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
             <div className="flex flex-wrap gap-3 mt-3 text-slate-500 text-xs font-bold uppercase tracking-widest">
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><Smartphone size={12} className="mr-1.5"/> {pacienteSelecionado.whatsapp}</span>
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><CreditCard size={12} className="mr-1.5"/> {pacienteSelecionado.cpf}</span>
-              {/* Agora a Recepção também pode ver o valor do tratamento */}
               {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
                 <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl border border-blue-100">Sessão: R$ {pacienteSelecionado.valor}</span>
               )}
@@ -418,7 +436,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
         <div className="flex flex-nowrap w-full border-b border-slate-200 overflow-x-auto custom-scrollbar touch-pan-x hide-scrollbar">
           {abasDisponiveis.map(tab => {
-            if (tab.restritoFin && !hasAccess(['gestor_clinico', 'admin_fin', 'recepcao'])) return null; // Permissão incluída
+            if (tab.restritoFin && !hasAccess(['gestor_clinico', 'admin_fin', 'recepcao'])) return null;
             if (tab.restritoClinico && !hasAccess(['gestor_clinico', 'fisio', 'to'])) return null;
             return (
               <button key={tab.id} onClick={() => setTabAtiva(tab.id)} className={`shrink-0 px-6 py-4 flex items-center gap-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${tabAtiva === tab.id ? 'border-[#00A1FF] text-[#00A1FF] bg-[#00A1FF]/5' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
@@ -437,7 +455,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                       <div className="mb-6">
                           {proximaSessaoModulada ? (
                               <button onClick={() => puxarCondutaParaEvolucao(proximaSessaoModulada)} className="w-full md:w-auto bg-[#0F214A] text-white px-6 py-3 rounded-xl font-black text-xs shadow-md hover:bg-[#00A1FF] transition-all flex items-center justify-center gap-2">
-                                 <CornerDownRight size={14} className="text-[#FFCC00]" /> Puxar Conduta Planejada ({new Date(proximaSessaoModulada.data).toLocaleDateString('pt-BR')})
+                                 <CornerDownRight size={14} className="text-[#FFCC00]" /> Puxar Conduta Planejada ({formatarDataAgenda(proximaSessaoModulada.data)})
                               </button>
                           ) : (
                               <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-white/50 p-3 rounded-xl border border-slate-300 border-dashed w-fit">
@@ -470,8 +488,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                
                <div className="space-y-4">
                   {evolucoes.map(evo => {
-                    const nomeUserLogado = user?.name || user?.nome || '';
-                    const isOwner = evo.profissionalId === user?.id || (!evo.profissionalId && evo.profissional === nomeUserLogado) || user?.role === 'gestor_clinico';
+                    const isOwner = evo.profissionalId === user?.id || (!evo.profissionalId && evo.profissional === nomeProfissionalLogado) || user?.role === 'gestor_clinico';
 
                     return (
                         <div key={evo.id} className={`bg-white p-5 md:p-6 rounded-[24px] border shadow-sm transition-all ${editandoEvolucaoId === evo.id ? 'border-amber-400 ring-4 ring-amber-50' : 'border-slate-100 hover:border-blue-200'}`}>
@@ -496,7 +513,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                 ) : (
                                     <div className="flex items-center gap-1 text-slate-300" title="Apenas o profissional que registrou pode alterar."><ShieldAlert size={12}/> Bloqueado</div>
                                 )}
-                                <span className="text-slate-600 uppercase flex items-center gap-1 truncate max-w-[120px]"><Award size={12} className="shrink-0"/> {evo.profissional.split(' ')[0]}</span>
+                                <span className="text-slate-600 uppercase flex items-center gap-1 truncate max-w-[120px]"><Award size={12} className="shrink-0"/> {evo.profissional?.split(' ')[0]}</span>
                             </div>
                         </div>
                         </div>
@@ -519,10 +536,10 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                value={sessaoModulacaoId}
                                onChange={(e) => handleSelectModulacao(e.target.value)}
                            >
-                               <option value="">Selecione a sessão futura...</option>
+                               <option value="">Selecione sua sessão futura...</option>
                                {agendamentosFuturos.map(ag => (
                                    <option key={ag.id} value={ag.id}>
-                                       {new Date(ag.data).toLocaleDateString('pt-BR')} - {ag.hora} ({ag.local})
+                                       {formatarDataAgenda(ag.data)} - {ag.hora} ({ag.local})
                                    </option>
                                ))}
                            </select>
@@ -568,7 +585,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                        </>
                    ) : (
                        <p className="text-sm font-bold text-slate-500 bg-white/50 p-4 md:p-6 rounded-2xl border border-blue-100">
-                           O paciente não possui agendamentos futuros para realizar a modulação.
+                           Você não possui agendamentos futuros para este paciente no momento.
                        </p>
                    )}
                 </div>
@@ -712,7 +729,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                    {consumosPaciente.map(c => (
                                       <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                                          <td className="p-3 md:p-4 text-[10px] md:text-xs font-bold text-slate-500">{new Date(c.data).toLocaleDateString('pt-BR')}</td>
-                                         <td className="p-3 md:p-4 text-xs md:text-sm font-black text-[#0F214A]">{c.itemNome} <span className="text-[9px] font-bold text-slate-400 block font-normal">por {c.profissional.split(' ')[0]}</span></td>
+                                         <td className="p-3 md:p-4 text-xs md:text-sm font-black text-[#0F214A]">{c.itemNome} <span className="text-[9px] font-bold text-slate-400 block font-normal">por {c.profissional?.split(' ')[0]}</span></td>
                                          <td className="p-3 md:p-4 text-xs md:text-sm font-bold text-slate-600 text-center">{c.quantidade} {c.unidade}</td>
                                          <td className="p-3 md:p-4 text-sm font-black text-green-600 text-right">R$ {Number(c.precoTotal).toFixed(2)}</td>
                                          <td className="p-3 md:p-4 text-center">
@@ -866,7 +883,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                 <input required placeholder="WhatsApp" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.whatsapp} onChange={e => setNovoPaciente({...novoPaciente, whatsapp: e.target.value})} />
                 <input required placeholder="Tel. Emergência" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.emergencia} onChange={e => setNovoPaciente({...novoPaciente, emergencia: e.target.value})} />
                 
-                {/* Agora a Recepção também pode inserir ou alterar o valor do tratamento */}
                 {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
                   <input required type="number" placeholder="Valor da Sessão (R$)" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-green-600" value={novoPaciente.valor} onChange={e => setNovoPaciente({...novoPaciente, valor: e.target.value})} />
                 )}
