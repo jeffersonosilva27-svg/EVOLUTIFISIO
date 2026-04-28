@@ -3,7 +3,7 @@ import {
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
   Trash2, Edit3, Landmark, Sparkles, ChevronRight, MessageCircle,
   TrendingDown, FileText, Loader2, CalendarClock, Target, ShieldAlert, 
-  Package, ShoppingCart, CheckCircle2, Layers, Dumbbell, Users
+  Package, ShoppingCart, CheckCircle2, Layers, Dumbbell, Users, CornerDownRight
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
@@ -15,6 +15,11 @@ const GRUPOS_MUSCULARES = [
   'Joelhos', 'Panturrilhas / Tornozelos', 'Membros Superiores (Geral)',
   'Respiratório / TMI'
 ];
+
+const obterDataLocalISO = (data) => {
+  const d = data instanceof Date ? data : new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
 
 export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [termoBusca, setTermoBusca] = useState('');
@@ -153,9 +158,13 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
          setConsumosPaciente(list);
       });
 
-      const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", pacienteSelecionado.id), where("status", "==", "pendente"));
+      // BUSCAR AGENDAMENTOS PARA MODULAÇÃO E EVOLUÇÃO
+      const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", pacienteSelecionado.id));
       const unsubAg = onSnapshot(qAg, (snapshot) => {
-          const ags = snapshot.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => new Date(a.data) - new Date(b.data));
+          const ags = snapshot.docs
+            .map(d => ({id: d.id, ...d.data()}))
+            .filter(a => a.status === 'pendente' || a.status === 'confirmado')
+            .sort((a,b) => new Date(a.data) - new Date(b.data));
           setAgendamentosFuturos(ags);
       });
 
@@ -185,6 +194,15 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
           alert("Sessão modulada e guardada com sucesso! Ela brilhará na tela inicial no dia do atendimento.");
       } catch(e) {
           alert("Erro ao salvar modulação.");
+      }
+  };
+
+  // NOVA FUNÇÃO CORRIGIDA: Puxa da próxima sessão que tem modulação, não importando a data.
+  const puxarCondutaParaEvolucao = (agendamentoModulado) => {
+      if (agendamentoModulado && agendamentoModulado.exerciciosPlanejados) {
+          const textoEx = agendamentoModulado.exerciciosPlanejados.map(ex => `• ${ex.nome} (${ex.series}x${ex.reps}${ex.carga ? ` - ${ex.carga}` : ''})`).join('\n');
+          const prefix = novoSoap ? novoSoap + '\n\n' : '';
+          setNovoSoap(prefix + 'Conduta / Exercícios Planejados:\n' + textoEx + '\n\nEvolução Clínica:\n');
       }
   };
 
@@ -304,14 +322,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
         if(exs.length > 0) acc[musculo] = exs;
         return acc;
     }, {});
-    
-    const musculosUsados = [...new Set(planoTratamento.map(e => e.musculo))];
-    musculosUsados.forEach(m => {
-        if(!GRUPOS_MUSCULARES.includes(m)) {
-            const exs = planoTratamento.filter(e => e.musculo === m);
-            if(exs.length > 0) planoAgrupado[m] = exs;
-        }
-    });
+
+    // NOVA INTELIGÊNCIA: Encontra a primeira sessão futura (pendente/confirmada) que tenha modulação!
+    const proximaSessaoModulada = agendamentosFuturos.find(a => a.exerciciosPlanejados && a.exerciciosPlanejados.length > 0);
 
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 pb-20">
@@ -379,6 +392,16 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
           {tabAtiva === 'historico' && (
             <div className="space-y-6">
                <div className={`p-6 md:p-8 rounded-[32px] border transition-colors ${editandoEvolucaoId ? 'bg-amber-50 border-amber-200' : 'bg-blue-50/50 border-blue-100'}`}>
+                  
+                  {/* BOTÃO MÁGICO DE PUXAR CONDUTA (Correção de Data Inteligente) */}
+                  {proximaSessaoModulada && !editandoEvolucaoId && (
+                      <div className="mb-4">
+                          <button onClick={() => puxarCondutaParaEvolucao(proximaSessaoModulada)} className="w-full md:w-auto bg-[#0F214A] text-white px-6 py-2.5 rounded-xl font-black text-xs shadow-md hover:bg-[#00A1FF] transition-all flex items-center justify-center gap-2">
+                             <CornerDownRight size={14} className="text-[#FFCC00]" /> Puxar Conduta Planejada ({new Date(proximaSessaoModulada.data).toLocaleDateString('pt-BR')})
+                          </button>
+                      </div>
+                  )}
+
                   <div className="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4">
                     <h3 className={`font-bold ${editandoEvolucaoId ? 'text-amber-900' : 'text-[#0F214A]'}`}>
                       {editandoEvolucaoId ? 'Editando Evolução Existente' : 'Nova Evolução Clínica'}
@@ -391,7 +414,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                       </div>
                     </div>
                   </div>
-                  <textarea className="w-full border-2 border-white rounded-2xl p-4 h-32 mb-4 outline-none focus:border-[#00A1FF] bg-white/80 font-medium text-slate-700 text-sm" placeholder="Descreva o atendimento..." value={novoSoap} onChange={e => setNovoSoap(e.target.value)} />
+                  <textarea className="w-full border-2 border-white rounded-2xl p-4 h-40 mb-4 outline-none focus:border-[#00A1FF] bg-white/80 font-medium text-slate-700 text-sm" placeholder="Descreva o atendimento ou puxe a conduta no botão acima..." value={novoSoap} onChange={e => setNovoSoap(e.target.value)} />
                   <div className="flex gap-3">
                     <button onClick={salvarEvolucao} className={`w-full md:w-auto ${editandoEvolucaoId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#00A1FF] hover:bg-blue-600'} text-white px-8 py-3.5 rounded-xl font-black shadow-lg transition-colors text-sm`}>
                       {editandoEvolucaoId ? 'Guardar Alterações' : 'Assinar Digitalmente'}
@@ -602,6 +625,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                          
                          <button type="submit" className="w-full md:w-auto bg-[#00A1FF] text-white px-8 py-3.5 rounded-xl font-black hover:bg-[#0F214A] transition-colors shadow-md text-sm">Lançar</button>
                       </div>
+                      <p className="text-[10px] font-bold text-slate-400 mt-3">* O valor de venda será automaticamente somado à fatura mensal deste paciente.</p>
                    </form>
 
                    <div>
