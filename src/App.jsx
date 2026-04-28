@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
-import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy, collectionGroup } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, addDoc, orderBy, collectionGroup } from 'firebase/firestore';
 
 import Agenda from './views/Agenda'; 
 import Pacientes from './views/Pacientes';
@@ -46,7 +46,6 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
-// --- MOTOR DE PUSH NOTIFICATIONS ---
 const pedirPermissaoNotificacao = async () => {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted" && Notification.permission !== "denied") {
@@ -59,7 +58,6 @@ const dispararPush = (titulo, corpo) => {
     new Notification(titulo, { body: corpo, icon: '/choquito.jpg' });
   }
 };
-// -----------------------------------
 
 const TUTORIAL_CHAPTERS = [
   { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
@@ -70,7 +68,7 @@ const TUTORIAL_CHAPTERS = [
 ];
 
 const TUTORIAL_STEPS = [
-  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica.", view: 'dashboard', botao: "Começar Tour Guiado" },
+  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! Seu novo braço direito na gestão clínica.", view: 'dashboard', botao: "Começar Tour Guiado" },
   { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções pendentes.", view: 'dashboard', botao: "Entendi" },
   { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes com proteção de janela dupla.", view: 'agenda', botao: "Ir para Clínico" },
   { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
@@ -216,7 +214,7 @@ function MainApp() {
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Award, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
-    { id: 'financeiro', icon: DollarSign, label: 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin', 'recepcao'] }, // Recepção adicionada aqui
+    { id: 'financeiro', icon: DollarSign, label: 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin', 'recepcao'] },
     { id: 'equipe', icon: ShieldCheck, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
 
@@ -225,7 +223,6 @@ function MainApp() {
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
     
-    // Filtros Clínicos
     const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
     const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado');
     const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
@@ -233,11 +230,9 @@ function MainApp() {
     const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
     
-    // Filtros Administrativos/Gestão
     const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
     
-    // Regras de Visibilidade
     const isClinico = ['fisio', 'to', 'gestor_clinico'].includes(user?.role);
     const isAdminOrRecepcao = ['recepcao', 'admin_fin', 'gestor_clinico'].includes(user?.role);
     
@@ -257,7 +252,6 @@ function MainApp() {
               <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das atividades de hoje.</p>
             </div>
 
-            {/* SEÇÃO DA RECEPÇÃO / ADMINISTRAÇÃO */}
             {isAdminOrRecepcao && (
                 <div className="space-y-6">
                     {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica</h3>}
@@ -292,7 +286,6 @@ function MainApp() {
                 </div>
             )}
 
-            {/* SEÇÃO DOS CLÍNICOS (FISIO / TO) */}
             {isClinico && (
                 <div className={isAdminOrRecepcao ? "pt-8 border-t border-slate-200" : ""}>
                     {isAdminOrRecepcao && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas</h3>}
@@ -312,7 +305,6 @@ function MainApp() {
                                             <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
                                         </p>
                                         
-                                        {/* CONDUTA PROGRAMADA / PLANO */}
                                         {listaExibicao.length > 0 && (
                                             <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
                                                 <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
@@ -416,7 +408,8 @@ function MainApp() {
   const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
 
   return (
-    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
+    // 🔪 CIRURGIA 2: Fundo Seguro no Mobile. Alterado de "h-screen" para "h-[100dvh]"
+    <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
       {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
           <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative mt-16 animate-in zoom-in-95 duration-300">
@@ -447,14 +440,17 @@ function MainApp() {
         </div>
       </aside>
       
-      <main className={`flex-1 flex flex-col min-w-0 ${isModalActive ? 'pb-0' : 'pb-16'} md:pb-0 h-full overflow-y-auto print:overflow-visible transition-all duration-300`}>
+      {/* 🔪 CIRURGIA 2: pb-16 trocado por pb-24 para proteger o fim da tela da barra inferior do telemóvel */}
+      <main className={`flex-1 flex flex-col min-w-0 ${isModalActive ? 'pb-0' : 'pb-24'} md:pb-0 h-full overflow-y-auto print:overflow-visible transition-all duration-300`}>
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40 print:hidden">
            <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
-           <div className="flex items-center gap-3 ml-auto">
-              <a href="mailto:jefferson.osilva27@gmail.com?subject=Sugestão de Melhoria - Evoluti Fisio" className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Sugerir Melhoria"><MessageSquareShare size={18} /><span className="text-[10px] font-black text-slate-700 uppercase">Sugerir Melhoria</span></a>
-              <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Como funciona?"><Zap size={18} className="fill-[#FFCC00]" /><span className="text-[10px] font-black text-slate-700 uppercase">Guia</span></button>
+           <div className="flex items-center gap-2 md:gap-3 ml-auto">
+              <a href="mailto:suporte@evoluti.com" className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100"><MessageSquareShare size={18} /><span className="text-[10px] font-black text-slate-700 uppercase">Sugerir Melhoria</span></a>
+              <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100"><Zap size={18} className="fill-[#FFCC00]" /><span className="text-[10px] font-black text-slate-700 uppercase">Guia</span></button>
               <div className="text-right hidden sm:block"><p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p><p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p></div>
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
+              {/* 🔪 CIRURGIA 3: Botão de Logout injetado no Header do Mobile */}
+              <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors ml-1"><LogOut size={20}/></button>
            </div>
         </header>
         <div className="p-4 md:p-8 h-full print:p-0">

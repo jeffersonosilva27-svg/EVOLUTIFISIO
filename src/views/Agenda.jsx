@@ -60,12 +60,6 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && !['Atendimento Domiciliar', 'Ginásio Clínico', 'Atendimento Hospitalar'].includes(l))));
   };
 
-  const getSalasRecomendadas = () => {
-    const prof = profissionais.find(p => p.id === form.profissionalId);
-    if (!prof) return [];
-    return prof.categoriaBase === 'fisio' ? ['Sala 701', 'Sala 703'] : ['Sala 704', 'Sala 705'];
-  };
-
   const abrirFormEdicao = (agend) => {
     setIsLote(false);
     setAgendamentoEditando(agend.id);
@@ -88,19 +82,16 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     
     try {
       if (agendamentoEditando) {
-        // EDIÇÃO ÚNICA
         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local, agendamentoEditando);
-        if (conflito) { alert("Conflito detetado!"); setCarregandoIA(false); return; }
+        if (conflito) { alert("Conflito detectado!"); setCarregandoIA(false); return; }
         await updateDoc(doc(db, "agendamentos", agendamentoEditando), { ...form, paciente: form.pacienteNome, profissional: form.profissionalNome });
         alert("Alteração guardada!");
       } else if (!isLote) {
-        // CRIAÇÃO ÚNICA
         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
-        if (conflito) { alert("Conflito detetado!"); setCarregandoIA(false); return; }
+        if (conflito) { alert("Conflito detectado!"); setCarregandoIA(false); return; }
         await addDoc(collection(db, "agendamentos"), { ...form, paciente: form.pacienteNome, profissional: form.profissionalNome, status: 'pendente' });
         alert("Agendamento criado!");
       } else {
-        // MÁGICA DO LOTE
         if (loteConfig.diasSemana.length === 0) { alert("Selecione pelo menos um dia da semana."); setCarregandoIA(false); return; }
         
         let sessoesCriadas = 0;
@@ -133,7 +124,6 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     setCarregandoIA(false);
   };
 
-  // ORDENAÇÃO: O perfil do utilizador logado no topo, e os restantes por ordem alfabética
   const pacientesOrdenados = [...pacientes].sort((a, b) => a.nome.localeCompare(b.nome));
   const profissionaisOrdenados = [...profissionais].sort((a, b) => {
       if (a.id === user?.id) return -1;
@@ -147,8 +137,8 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
   if (!user) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-[#00A1FF]" size={40}/></div>;
 
   return (
-    // OTIMIZAÇÃO: A altura foi estritamente definida h-[calc(...)] para que o overflow-y-auto funcione dentro da tabela
-    <div className="flex flex-col space-y-4 animate-in fade-in relative h-[calc(100vh-180px)] md:h-[calc(100vh-140px)]">
+    // 🔪 CIRURGIA 1: Trocado 100vh para 100dvh no mobile para respeitar a barra de endereço real do smartphone.
+    <div className="flex flex-col space-y-4 animate-in fade-in relative h-[calc(100dvh-170px)] md:h-[calc(100vh-140px)]">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm shrink-0">
         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Agenda Clínica</h2>
         <div className="flex items-center bg-slate-50 p-1.5 rounded-2xl w-full md:w-auto justify-between">
@@ -160,7 +150,8 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-h-0 overflow-hidden">
-        <div className="overflow-x-auto overflow-y-auto flex-1 w-full touch-pan-x custom-scrollbar">
+        {/* 🔪 CIRURGIA 2: A classe "touch-pan-x" foi REMOVIDA. Era ela que bloqueava o seu scroll vertical no telemóvel. */}
+        <div className="overflow-auto flex-1 w-full custom-scrollbar">
           <table className="w-full border-collapse min-w-[850px]">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md shadow-sm">
               <tr>
