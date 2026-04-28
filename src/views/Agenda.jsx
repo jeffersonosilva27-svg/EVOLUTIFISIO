@@ -49,7 +49,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
 
   const [isLote, setIsLote] = useState(false);
   const [loteConfig, setLoteConfig] = useState({ quantidade: 10, diasSemana: [] });
-  const [modalEscopo, setModalEscopo] = useState({ open: false, type: '' });
   const [filaConflitos, setFilaConflitos] = useState([]);
   const [agendamentosBons, setAgendamentosBons] = useState([]);
   const [idxConflito, setIdxConflito] = useState(0);
@@ -98,12 +97,47 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     setMostrarForm(true);
   };
 
+  // ====== AQUI ESTÁ A CORREÇÃO DE EDIÇÃO DA AGENDA ======
+  const processarEdicao = async () => {
+    setCarregandoIA(true);
+    try {
+        const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local, agendamentoEditando);
+        if (conflito) {
+            alert("Conflito! Já existe um paciente para este profissional ou sala neste horário.");
+            setCarregandoIA(false);
+            return;
+        }
+
+        await updateDoc(doc(db, "agendamentos", agendamentoEditando), {
+            pacienteId: form.pacienteId,
+            paciente: form.pacienteNome,
+            data: form.data,
+            hora: form.hora,
+            local: form.local,
+            profissionalId: form.profissionalId,
+            profissional: form.profissionalNome
+        });
+        
+        alert("Agendamento alterado com sucesso!");
+        fecharFormularioGeral();
+    } catch (e) {
+        alert("Erro ao salvar alterações da agenda.");
+    }
+    setCarregandoIA(false);
+  };
+
   const tentarSalvar = (e) => {
     e.preventDefault();
     if (!verificarUsoSala702()) return;
-    if (agendamentoEditando) { setModalEscopo({ open: true, type: 'edit' }); } 
-    else { processarNovoAgendamento(); }
+    
+    // Se estiver editando, chama o método corrigido direto. Senão cria novo.
+    if (agendamentoEditando) { 
+        processarEdicao(); 
+    } else { 
+        processarNovoAgendamento(); 
+    }
   };
+  // =======================================================
 
   const confirmarAtendimento = async (e) => {
     e.preventDefault();
@@ -192,10 +226,8 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
         <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); }} className="w-full md:w-auto bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm"><Plus size={18}/> Novo Agendamento</button>
       </div>
 
-      {/* OTIMIZAÇÃO MOBILE AQUI: w-full overflow-x-auto e min-w-0 */}
       <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-w-0 overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto flex-1 relative w-full touch-pan-x custom-scrollbar">
-          {/* Tabela com min-w-[800px] garante o scroll nativo em telas menores */}
           <table className="w-full border-collapse min-w-[800px]">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md">
               <tr>
