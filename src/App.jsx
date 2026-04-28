@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Component } from 'react';
+import React, { useState, useEffect, useRef, Component } from 'react';
 import { 
   HeartPulse, LayoutDashboard, Calendar, Users, 
   DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
@@ -46,6 +46,21 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
+// --- MOTOR DE PUSH NOTIFICATIONS ---
+const pedirPermissaoNotificacao = async () => {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+    await Notification.requestPermission();
+  }
+};
+
+const dispararPush = (titulo, corpo) => {
+  if (Notification.permission === "granted") {
+    new Notification(titulo, { body: corpo, icon: '/choquito.jpg' });
+  }
+};
+// -----------------------------------
+
 const TUTORIAL_CHAPTERS = [
   { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
   { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-[#00A1FF]', textColor: 'text-white' },
@@ -55,7 +70,7 @@ const TUTORIAL_CHAPTERS = [
 ];
 
 const TUTORIAL_STEPS = [
-  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica.", view: 'dashboard', botao: "Começar Tour Guiada" },
+  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! O seu novo braço direito na gestão clínica.", view: 'dashboard', botao: "Começar Tour Guiado" },
   { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções pendentes.", view: 'dashboard', botao: "Entendi" },
   { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes com proteção de janela dupla.", view: 'agenda', botao: "Ir para Clínico" },
   { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
@@ -97,10 +112,10 @@ function MainApp() {
   const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
   const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
 
-  // LÓGICA DE OCULTAÇÃO DA BARRA MOBILE
   const [isModalActive, setIsModalActive] = useState(false);
-
   const [tutorialStep, setTutorialStep] = useState(-1);
+
+  const isFirstLoad = useRef(true);
 
   const navegarPara = (view, params = null) => { setNavParams(params); setCurrentView(view); };
   const iniciarTutorial = () => { setTutorialStep(0); setCurrentView('dashboard'); };
@@ -125,6 +140,7 @@ function MainApp() {
         if (userData.status === 'pendente') { alert("Cadastro em análise pelo gestor."); } 
         else if (userData.senhaProvisoria === senha || userData.senhaReal === senha) {
           setUser(userData);
+          pedirPermissaoNotificacao();
           if (lembrarMe) { const expireTime = Date.now() + (30 * 60 * 1000); localStorage.setItem('evoluti_user', JSON.stringify({...userData, expiresAt: expireTime})); } 
           else { sessionStorage.setItem('evoluti_user', JSON.stringify(userData)); }
           if (!localStorage.getItem('evoluti_tutorial_visto')) { setTimeout(() => setTutorialStep(0), 1000); }
@@ -148,7 +164,7 @@ function MainApp() {
         nome: cadNome, categoriaBase: cadProfissao, registro: cadRegistro, email: cadEmail,
         senhaProvisoria: cadSenha, precisaTrocarSenha: true, status: 'pendente', role: 'pendente', dataCadastro: new Date().toISOString()
       });
-      alert("Sucesso! O seu pedido de acesso foi enviado ao Gestor Clínico.");
+      alert("Sucesso! Seu pedido de acesso foi enviado ao Gestor Clínico.");
       setAuthMode('login');
       setCadNome(''); setCadProfissao(''); setCadRegistro(''); setCadEmail(''); setCadSenha('');
     } catch (error) { alert("Erro ao enviar pedido."); }
@@ -159,13 +175,36 @@ function MainApp() {
 
   useEffect(() => {
     if (user) {
+      pedirPermissaoNotificacao();
+
       const unsubPac = onSnapshot(query(collection(db, "pacientes"), orderBy("nome", "asc")), (snap) => setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-      const unsubAg = onSnapshot(collection(db, "agendamentos"), (snap) => setAgendamentosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+      
+      const unsubAg = onSnapshot(collection(db, "agendamentos"), (snap) => {
+        const novosAgendamentos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        if (!isFirstLoad.current) {
+          snap.docChanges().forEach((change) => {
+            const ag = change.doc.data();
+            if (change.type === "added" && ag.profissionalId === user.id) {
+               dispararPush("Evoluti Fisio - Nova Sessão!", `Paciente ${ag.paciente} agendado para ${ag.data} às ${ag.hora} em ${ag.local}.`);
+            }
+            if (change.type === "modified" && ag.status === 'cancelado' && ag.profissionalId === user.id) {
+               dispararPush("Sessão Cancelada ⚠️", `A sessão de ${ag.paciente} (${ag.data} às ${ag.hora}) foi cancelada. Motivo: ${ag.motivoCancelamento}`);
+            }
+          });
+        } else {
+          isFirstLoad.current = false;
+        }
+
+        setAgendamentosGlobais(novosAgendamentos);
+      });
+
       const unsubEx = onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
         const exs = snap.docs.map(d => ({ id: d.id, pacienteId: d.ref.parent.parent.id, ...d.data() }));
         exs.sort((a,b) => new Date(b.dataInclusao || 0) - new Date(a.dataInclusao || 0));
         setExerciciosGlobais(exs);
       });
+
       return () => { unsubPac(); unsubAg(); unsubEx(); };
     }
   }, [user]);
@@ -177,7 +216,7 @@ function MainApp() {
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Award, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
-    { id: 'financeiro', icon: DollarSign, label: 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin'] },
+    { id: 'financeiro', icon: DollarSign, label: 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin', 'recepcao'] }, // Recepção adicionada aqui
     { id: 'equipe', icon: ShieldCheck, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
 
@@ -185,19 +224,25 @@ function MainApp() {
     const hojeIso = obterDataLocalISO(new Date());
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
+    
+    // Filtros Clínicos
     const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
     const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado');
     const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
     const proximoEstaAtrasado = proximoAtendimento ? getMinutos(proximoAtendimento.hora) < minutosAtuais : false;
     const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
+    
+    // Filtros Administrativos/Gestão
     const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
     
-    // EXIBIÇÃO DA CONDUTA PROGRAMADA (RESTAURADA E MELHORADA)
+    // Regras de Visibilidade
+    const isClinico = ['fisio', 'to', 'gestor_clinico'].includes(user?.role);
+    const isAdminOrRecepcao = ['recepcao', 'admin_fin', 'gestor_clinico'].includes(user?.role);
+    
     const exerciciosDaSessao = proximoAtendimento?.exerciciosPlanejados || [];
     const planoProximoPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
-    
     const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoProximoPaciente;
     const isSessaoModulada = exerciciosDaSessao.length > 0;
     
@@ -206,75 +251,110 @@ function MainApp() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel Clínico</h1>
-              <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das suas atividades hoje.</p>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                 {user?.role === 'recepcao' ? 'Painel da Recepção' : user?.role === 'admin_fin' ? 'Painel Financeiro' : 'Painel Clínico'}
+              </h1>
+              <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das atividades de hoje.</p>
             </div>
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]">
-                    <div className="relative z-10">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4"><Clock size={14}/> Seu Próximo Paciente</p>
-                        {proximoAtendimento ? (
-                            <>
-                                <div className="flex items-center gap-3 mb-2">
-                                    <h2 className="text-4xl md:text-5xl font-black">{proximoAtendimento.paciente}</h2>
-                                    {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest">Presença Confirmada</span>}
-                                </div>
-                                <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                    <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>{proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}</span>
-                                    <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
-                                </p>
-                                
-                                {/* CONDUTA PROGRAMADA (RESTAURADA E COM DESIGN ATUALIZADO) */}
-                                {listaExibicao.length > 0 && (
-                                    <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
-                                        <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
-                                            {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada (Modulação)</> : <><Dumbbell size={14}/> Exercícios do Plano Geral</>}
-                                        </p>
-                                        <div className="space-y-2">
-                                            {listaExibicao.map((ex, i) => (
-                                                <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
-                                                    <span className="font-bold text-white tracking-wide">{ex.nome}</span>
-                                                    <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-4 shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
-                                                        {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div><h2 className="text-3xl font-black mb-2 text-slate-400">Nenhum paciente na fila.</h2><p className="text-slate-500 font-medium">Você concluiu todos os seus atendimentos de hoje!</p></div>
-                        )}
-                    </div>
-                    {proximoAtendimento && (
-                        <div className="relative z-10 mt-8 flex flex-wrap gap-3">
-                            <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="bg-[#FFCC00] text-[#0F214A] px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-yellow-400 transition-all flex items-center gap-2 shadow-[0_4px_20px_rgba(255,204,0,0.3)] w-fit">Iniciar Prontuário <ArrowRight size={16}/></button>
-                        </div>
-                    )}
-                    <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
-                </div>
-                <div className="flex flex-col gap-6">
-                    <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-slate-200">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> Suas Sessões Hoje</p>
-                        <h3 className="text-4xl font-black text-[#0F214A]">{minhaAgendaHoje.length}</h3>
-                        <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
-                        <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
-                    </div>
-                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-200">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Suas Evoluções Pendentes</p>
-                        <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
-                        <p className="text-xs font-bold text-blue-600/70 mt-2">Sessões atrasadas sem assinatura</p>
-                    </div>
-                </div>
-            </div>
-            {user.role === 'gestor_clinico' && (
-                <div className="mt-8 pt-8 border-t border-slate-200">
-                    <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica (Gestor)</h3>
+
+            {/* SEÇÃO DA RECEPÇÃO / ADMINISTRAÇÃO */}
+            {isAdminOrRecepcao && (
+                <div className="space-y-6">
+                    {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica</h3>}
+                    
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="bg-slate-900 text-white rounded-[24px] p-6 shadow-md hover:shadow-lg transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
                         <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-blue-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
                         <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
+                    </div>
+
+                    {(user?.role === 'recepcao' || user?.role === 'gestor_clinico') && (
+                        <div className="mt-6 bg-white border border-slate-200 rounded-[32px] p-6 md:p-8 shadow-sm">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2"><Clock size={14}/> Fila de Chegada (Próximos Atendimentos)</p>
+                            <div className="space-y-3">
+                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').slice(0, 5).map(ag => (
+                                    <div key={ag.id} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all">
+                                        <div>
+                                            <div className="font-black text-slate-800 text-sm flex items-center gap-2">{ag.paciente} {ag.status === 'confirmado' && <span className="bg-blue-50 text-[#00A1FF] border border-blue-100 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Confirmado</span>}</div>
+                                            <div className="text-[10px] font-bold text-slate-500 uppercase mt-0.5">{ag.profissional} • {ag.local}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="bg-[#00A1FF] text-white px-3 py-1 rounded-lg text-xs font-black shadow-md">{ag.hora}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').length === 0 && (
+                                    <div className="p-4 text-center rounded-xl bg-slate-50 border-2 border-dashed border-slate-200"><p className="text-sm font-bold text-slate-400">Nenhum atendimento pendente para hoje na clínica.</p></div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* SEÇÃO DOS CLÍNICOS (FISIO / TO) */}
+            {isClinico && (
+                <div className={isAdminOrRecepcao ? "pt-8 border-t border-slate-200" : ""}>
+                    {isAdminOrRecepcao && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas</h3>}
+                    
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                        <div className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]">
+                            <div className="relative z-10">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4"><Clock size={14}/> Seu Próximo Paciente</p>
+                                {proximoAtendimento ? (
+                                    <>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <h2 className="text-4xl md:text-5xl font-black">{proximoAtendimento.paciente}</h2>
+                                            {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest">Presença Confirmada</span>}
+                                        </div>
+                                        <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
+                                            <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>{proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}</span>
+                                            <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
+                                        </p>
+                                        
+                                        {/* CONDUTA PROGRAMADA / PLANO */}
+                                        {listaExibicao.length > 0 && (
+                                            <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
+                                                <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
+                                                    {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada (Modulação)</> : <><Dumbbell size={14}/> Exercícios do Plano Geral</>}
+                                                </p>
+                                                <div className="space-y-2">
+                                                    {listaExibicao.map((ex, i) => (
+                                                        <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
+                                                            <span className="font-bold text-white tracking-wide">{ex.nome}</span>
+                                                            <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-4 shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
+                                                                {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div><h2 className="text-3xl font-black mb-2 text-slate-400">Nenhum paciente na fila.</h2><p className="text-slate-500 font-medium">Você concluiu todos os seus atendimentos de hoje!</p></div>
+                                )}
+                            </div>
+                            {proximoAtendimento && (
+                                <div className="relative z-10 mt-8 flex flex-wrap gap-3">
+                                    <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="bg-[#FFCC00] text-[#0F214A] px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-yellow-400 transition-all flex items-center gap-2 shadow-[0_4px_20px_rgba(255,204,0,0.3)] w-fit">Iniciar Prontuário <ArrowRight size={16}/></button>
+                                </div>
+                            )}
+                            <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
+                        </div>
+                        <div className="flex flex-col gap-6">
+                            <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-slate-200">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> Suas Sessões Hoje</p>
+                                <h3 className="text-4xl font-black text-[#0F214A]">{minhaAgendaHoje.length}</h3>
+                                <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
+                                <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                            </div>
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-200">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Suas Evoluções Pendentes</p>
+                                <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
+                                <p className="text-xs font-bold text-blue-600/70 mt-2">Sessões atrasadas sem assinatura</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -289,7 +369,7 @@ function MainApp() {
            <div className="relative z-10 max-w-lg">
               <div className="flex items-center gap-3 mb-8"><HeartPulse size={48} className="text-[#00A1FF]" /><span className="text-3xl font-black tracking-tight">EVOLUTI</span></div>
               <h1 className="text-5xl font-black leading-tight mb-6">Gestão Clínica Inteligente.</h1>
-              <p className="text-lg text-blue-200 font-medium leading-relaxed">Organize a sua agenda, escreva evoluções guiadas por IA e controle o fluxo de caixa com a energia do Choquito ⚡!</p>
+              <p className="text-lg text-blue-200 font-medium leading-relaxed">Organize sua agenda, escreva evoluções guiadas por IA e controle o fluxo de caixa com a energia do Choquito ⚡!</p>
            </div>
            <div className="absolute top-1/4 right-10 w-48 h-48 opacity-90 hover:opacity-100 hover:scale-105 transition-all duration-500 z-20"><img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain rounded-full shadow-[0_0_40px_rgba(0,161,255,0.4)] border-4 border-[#00A1FF]" /></div>
            <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-[#00A1FF] rounded-full blur-[150px] opacity-20"></div>
@@ -300,7 +380,7 @@ function MainApp() {
            <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700 mt-12 lg:mt-0">
              {authMode === 'login' ? (
                  <>
-                   <div className="mb-10 text-center lg:text-left"><h2 className="text-3xl font-black text-slate-900">Bem-vindo de volta!</h2><p className="text-slate-500 font-medium mt-2">Insira as suas credenciais para acessar o sistema.</p></div>
+                   <div className="mb-10 text-center lg:text-left"><h2 className="text-3xl font-black text-slate-900">Bem-vindo de volta!</h2><p className="text-slate-500 font-medium mt-2">Insira suas credenciais para acessar o sistema.</p></div>
                    <form onSubmit={realizarLogin} className="space-y-5">
                      <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">E-mail Profissional</label><input name="email" required type="email" placeholder="nome@clinica.com" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 transition-all shadow-sm" /></div>
                      <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Senha</label><input name="senha" required type="password" placeholder="••••••••" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 transition-all shadow-sm" /></div>
@@ -314,7 +394,7 @@ function MainApp() {
                  </>
              ) : (
                  <>
-                   <div className="mb-8 text-center lg:text-left"><button onClick={() => setAuthMode('login')} className="mb-4 text-sm font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1 lg:justify-start justify-center mx-auto lg:mx-0 transition-colors"><ChevronLeft size={16}/> Voltar ao Login</button><h2 className="text-3xl font-black text-slate-900">Solicitar Acesso</h2><p className="text-slate-500 font-medium mt-2 text-sm">O seu pedido será revisado pelo Gestor Clínico.</p></div>
+                   <div className="mb-8 text-center lg:text-left"><button onClick={() => setAuthMode('login')} className="mb-4 text-sm font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1 lg:justify-start justify-center mx-auto lg:mx-0 transition-colors"><ChevronLeft size={16}/> Voltar ao Login</button><h2 className="text-3xl font-black text-slate-900">Solicitar Acesso</h2><p className="text-slate-500 font-medium mt-2 text-sm">Seu pedido será revisado pelo Gestor Clínico.</p></div>
                    <form onSubmit={solicitarCadastro} className="space-y-4">
                      <input required type="text" placeholder="Nome Completo" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-800 text-sm shadow-sm transition-all" value={cadNome} onChange={e => setCadNome(e.target.value)} />
                      <div className="grid grid-cols-2 gap-3">
@@ -367,12 +447,11 @@ function MainApp() {
         </div>
       </aside>
       
-      {/* OTIMIZAÇÃO: A margem inferior pb-16 desliga quando o isModalActive é verdadeiro */}
       <main className={`flex-1 flex flex-col min-w-0 ${isModalActive ? 'pb-0' : 'pb-16'} md:pb-0 h-full overflow-y-auto print:overflow-visible transition-all duration-300`}>
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40 print:hidden">
            <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
            <div className="flex items-center gap-3 ml-auto">
-              <a href="mailto:jefferson.osilva27@gmail.com?subject=Sugestão de Melhoria" className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Sugerir Melhoria"><MessageSquareShare size={18} /><span className="text-[10px] font-black text-slate-700 uppercase">Sugerir Melhoria</span></a>
+              <a href="mailto:jefferson.osilva27@gmail.com?subject=Sugestão de Melhoria - Evoluti Fisio" className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Sugerir Melhoria"><MessageSquareShare size={18} /><span className="text-[10px] font-black text-slate-700 uppercase">Sugerir Melhoria</span></a>
               <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100" title="Como funciona?"><Zap size={18} className="fill-[#FFCC00]" /><span className="text-[10px] font-black text-slate-700 uppercase">Guia</span></button>
               <div className="text-right hidden sm:block"><p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p><p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p></div>
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
@@ -390,7 +469,6 @@ function MainApp() {
         </div>
       </main>
       
-      {/* BARRA INFERIOR MOBILE: h-16 (menor) e desliza para baixo se houver janelas ativas */}
       <nav className={`md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-200 flex justify-around items-center h-16 px-2 z-[50] print:hidden transition-transform duration-500 ease-in-out ${isModalActive ? 'translate-y-full' : 'translate-y-0'}`}>
          {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
             <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${currentView === item.id ? 'text-[#00A1FF] scale-105' : 'text-slate-400'}`}>

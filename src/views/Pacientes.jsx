@@ -51,7 +51,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const [planoTratamento, setPlanoTratamento] = useState([]);
   const [novoExercicio, setNovoExercicio] = useState({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
   
-  // ESTADO DO NOVO BANCO GLOBAL DE EXERCÍCIOS
   const [bancoExerciciosGlobais, setBancoExerciciosGlobais] = useState([]);
 
   const [estoqueGeral, setEstoqueGeral] = useState([]);
@@ -79,7 +78,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
      const unsubEstoque = onSnapshot(collection(db, "estoque"), snap => {
          setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })));
      });
-     // CARREGAR BANCO GLOBAL DE EXERCÍCIOS
      const unsubBancoEx = onSnapshot(collection(db, "banco_exercicios"), snap => {
          const exs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
          exs.sort((a,b) => (a.nome || '').localeCompare(b.nome || ''));
@@ -227,7 +225,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   };
 
   const apagarEvolucao = async (id) => {
-    if(window.confirm("Tem a certeza que deseja apagar esta evolução de forma permanente? O seu nome ficará no registro do sistema.")) {
+    if(window.confirm("Tem certeza que deseja apagar esta evolução de forma permanente? Seu nome ficará no registro do sistema.")) {
         try { await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", id)); } 
         catch (e) { alert("Erro ao apagar evolução."); }
     }
@@ -248,7 +246,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     } catch (e) { alert("Erro ao salvar evolução."); }
   };
 
-  // NOVA FUNÇÃO: ADICIONAR COM MERGE INTELIGENTE NO BANCO GLOBAL
   const adicionarExercicio = async (e) => {
     e.preventDefault();
     if(!novoExercicio.musculo || !novoExercicio.nome) return alert("Preencha a Categoria e a Descrição.");
@@ -258,7 +255,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       
       const existeBanco = bancoExerciciosGlobais.find(ex => (ex.nomeNormalizado || '') === nomeNorm);
       
-      // Se não existe, cria a raiz no Banco Global
       if (!existeBanco) {
           await addDoc(collection(db, "banco_exercicios"), {
               nome: nomeFormatado,
@@ -267,10 +263,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           });
       }
 
-      // Adiciona o espelho personalizado no paciente (com carga, série, etc)
       await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"), { 
           ...novoExercicio, 
-          nome: existeBanco ? existeBanco.nome : nomeFormatado, // Força a usar a grafia correta do banco se existir
+          nome: existeBanco ? existeBanco.nome : nomeFormatado,
           dataInclusao: new Date().toISOString(), 
           profissional: user?.name || user?.nome || 'Equipe' 
       });
@@ -340,7 +335,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
   const estoqueOrdenado = [...estoqueGeral].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
-  // ABA RESTRITA APENAS PARA CLÍNICOS
+  // ABA RESTRITA (Agora Recepção tem acesso à aba Financeira do Paciente)
   const abasDisponiveis = [
     { id: 'historico', icon: FileText, label: 'Histórico Clínico', restritoFin: false, restritoClinico: false },
     { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restritoFin: false, restritoClinico: true },
@@ -359,7 +354,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
         return acc;
     }, {});
     
-    // Adiciona grupos personalizados que o usuário digitou e que não estão na lista padrão
     const musculosUsados = [...new Set(planoTratamento.map(e => e.musculo))];
     musculosUsados.forEach(m => {
         if(!GRUPOS_MUSCULARES.includes(m)) {
@@ -396,7 +390,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
             <div className="flex flex-wrap gap-3 mt-3 text-slate-500 text-xs font-bold uppercase tracking-widest">
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><Smartphone size={12} className="mr-1.5"/> {pacienteSelecionado.whatsapp}</span>
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><CreditCard size={12} className="mr-1.5"/> {pacienteSelecionado.cpf}</span>
-              {hasAccess(['gestor_clinico', 'admin_fin']) && (
+              {/* Agora a Recepção também pode ver o valor do tratamento */}
+              {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
                 <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl border border-blue-100">Sessão: R$ {pacienteSelecionado.valor}</span>
               )}
             </div>
@@ -423,7 +418,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
         <div className="flex flex-nowrap w-full border-b border-slate-200 overflow-x-auto custom-scrollbar touch-pan-x hide-scrollbar">
           {abasDisponiveis.map(tab => {
-            if (tab.restritoFin && !hasAccess(['gestor_clinico', 'admin_fin'])) return null;
+            if (tab.restritoFin && !hasAccess(['gestor_clinico', 'admin_fin', 'recepcao'])) return null; // Permissão incluída
             if (tab.restritoClinico && !hasAccess(['gestor_clinico', 'fisio', 'to'])) return null;
             return (
               <button key={tab.id} onClick={() => setTabAtiva(tab.id)} className={`shrink-0 px-6 py-4 flex items-center gap-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${tabAtiva === tab.id ? 'border-[#00A1FF] text-[#00A1FF] bg-[#00A1FF]/5' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
@@ -739,7 +734,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
              </div>
           )}
 
-          {tabAtiva === 'financeiro' && hasAccess(['gestor_clinico', 'admin_fin']) && (
+          {tabAtiva === 'financeiro' && hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-2">
                <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm">
                   <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Landmark className="text-green-500 mr-2"/> Resumo Rápido</h3>
@@ -870,9 +865,12 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                 <input required placeholder="CPF" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.cpf} onChange={e => setNovoPaciente({...novoPaciente, cpf: e.target.value})} />
                 <input required placeholder="WhatsApp" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.whatsapp} onChange={e => setNovoPaciente({...novoPaciente, whatsapp: e.target.value})} />
                 <input required placeholder="Tel. Emergência" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.emergencia} onChange={e => setNovoPaciente({...novoPaciente, emergencia: e.target.value})} />
-                {hasAccess(['gestor_clinico', 'admin_fin']) && (
+                
+                {/* Agora a Recepção também pode inserir ou alterar o valor do tratamento */}
+                {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
                   <input required type="number" placeholder="Valor da Sessão (R$)" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-green-600" value={novoPaciente.valor} onChange={e => setNovoPaciente({...novoPaciente, valor: e.target.value})} />
                 )}
+                
                 <textarea placeholder="Observações clínicas iniciais..." className="md:col-span-2 border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] h-24 font-medium text-slate-700" value={novoPaciente.observacoes} onChange={e => setNovoPaciente({...novoPaciente, observacoes: e.target.value})} />
                 
                 <button type="submit" className="md:col-span-2 bg-[#00A1FF] text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-[#0F214A] transition-all">
