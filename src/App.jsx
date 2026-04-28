@@ -46,6 +46,7 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
+// --- MOTOR DE PUSH NOTIFICATIONS ---
 const pedirPermissaoNotificacao = async () => {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted" && Notification.permission !== "denied") {
@@ -58,6 +59,7 @@ const dispararPush = (titulo, corpo) => {
     new Notification(titulo, { body: corpo, icon: '/choquito.jpg' });
   }
 };
+// -----------------------------------
 
 const TUTORIAL_CHAPTERS = [
   { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
@@ -223,6 +225,7 @@ function MainApp() {
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
     
+    // Filtros Clínicos
     const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
     const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado');
     const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
@@ -230,9 +233,11 @@ function MainApp() {
     const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
     
+    // Filtros Administrativos/Gestão
     const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
     
+    // Regras de Visibilidade
     const isClinico = ['fisio', 'to', 'gestor_clinico'].includes(user?.role);
     const isAdminOrRecepcao = ['recepcao', 'admin_fin', 'gestor_clinico'].includes(user?.role);
     
@@ -252,42 +257,9 @@ function MainApp() {
               <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das atividades de hoje.</p>
             </div>
 
-            {isAdminOrRecepcao && (
-                <div className="space-y-6">
-                    {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica</h3>}
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-slate-900 text-white rounded-[24px] p-6 shadow-md hover:shadow-lg transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
-                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-blue-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
-                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
-                    </div>
-
-                    {(user?.role === 'recepcao' || user?.role === 'gestor_clinico') && (
-                        <div className="mt-6 bg-white border border-slate-200 rounded-[32px] p-6 md:p-8 shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2"><Clock size={14}/> Fila de Chegada (Próximos Atendimentos)</p>
-                            <div className="space-y-3">
-                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').slice(0, 5).map(ag => (
-                                    <div key={ag.id} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all">
-                                        <div>
-                                            <div className="font-black text-slate-800 text-sm flex items-center gap-2">{ag.paciente} {ag.status === 'confirmado' && <span className="bg-blue-50 text-[#00A1FF] border border-blue-100 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Confirmado</span>}</div>
-                                            <div className="text-[10px] font-bold text-slate-500 uppercase mt-0.5">{ag.profissional} • {ag.local}</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="bg-[#00A1FF] text-white px-3 py-1 rounded-lg text-xs font-black shadow-md">{ag.hora}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').length === 0 && (
-                                    <div className="p-4 text-center rounded-xl bg-slate-50 border-2 border-dashed border-slate-200"><p className="text-sm font-bold text-slate-400">Nenhum atendimento pendente para hoje na clínica.</p></div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
+            {/* SEÇÃO DOS CLÍNICOS (FISIO / TO) - APARECE PRIMEIRO */}
             {isClinico && (
-                <div className={isAdminOrRecepcao ? "pt-8 border-t border-slate-200" : ""}>
+                <div className="space-y-6">
                     {isAdminOrRecepcao && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas</h3>}
                     
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -350,6 +322,41 @@ function MainApp() {
                     </div>
                 </div>
             )}
+
+            {/* SEÇÃO DA RECEPÇÃO / ADMINISTRAÇÃO - VEM LOGO ABAIXO */}
+            {isAdminOrRecepcao && (
+                <div className={isClinico ? "pt-8 border-t border-slate-200 space-y-6" : "space-y-6"}>
+                    {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica</h3>}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-slate-900 text-white rounded-[24px] p-6 shadow-md hover:shadow-lg transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
+                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-blue-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
+                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
+                    </div>
+
+                    {(user?.role === 'recepcao' || user?.role === 'gestor_clinico') && (
+                        <div className="mt-6 bg-white border border-slate-200 rounded-[32px] p-6 md:p-8 shadow-sm">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2"><Clock size={14}/> Fila de Chegada (Próximos Atendimentos)</p>
+                            <div className="space-y-3">
+                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').slice(0, 5).map(ag => (
+                                    <div key={ag.id} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all">
+                                        <div>
+                                            <div className="font-black text-slate-800 text-sm flex items-center gap-2">{ag.paciente} {ag.status === 'confirmado' && <span className="bg-blue-50 text-[#00A1FF] border border-blue-100 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Confirmado</span>}</div>
+                                            <div className="text-[10px] font-bold text-slate-500 uppercase mt-0.5">{ag.profissional} • {ag.local}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="bg-[#00A1FF] text-white px-3 py-1 rounded-lg text-xs font-black shadow-md">{ag.hora}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').length === 0 && (
+                                    <div className="p-4 text-center rounded-xl bg-slate-50 border-2 border-dashed border-slate-200"><p className="text-sm font-bold text-slate-400">Nenhum atendimento pendente para hoje na clínica.</p></div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
   };
@@ -408,7 +415,6 @@ function MainApp() {
   const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
 
   return (
-    // 🔪 CIRURGIA 2: Fundo Seguro no Mobile. Alterado de "h-screen" para "h-[100dvh]"
     <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
       {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
@@ -440,7 +446,6 @@ function MainApp() {
         </div>
       </aside>
       
-      {/* 🔪 CIRURGIA 2: pb-16 trocado por pb-24 para proteger o fim da tela da barra inferior do telemóvel */}
       <main className={`flex-1 flex flex-col min-w-0 ${isModalActive ? 'pb-0' : 'pb-24'} md:pb-0 h-full overflow-y-auto print:overflow-visible transition-all duration-300`}>
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40 print:hidden">
            <span className="font-black text-[#00A1FF] uppercase tracking-tighter md:hidden">EVOLUTI</span>
@@ -449,7 +454,6 @@ function MainApp() {
               <button onClick={iniciarTutorial} className="p-2 text-[#FFCC00] hover:bg-yellow-50 rounded-full transition-colors hidden sm:flex items-center gap-2 bg-slate-50 px-3 shadow-sm border border-slate-100"><Zap size={18} className="fill-[#FFCC00]" /><span className="text-[10px] font-black text-slate-700 uppercase">Guia</span></button>
               <div className="text-right hidden sm:block"><p className="text-xs font-black leading-none text-[#0F214A]">{user?.name || user?.nome || 'Equipe'}</p><p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{user?.role?.replace('_', ' ')}</p></div>
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs capitalize">{(user?.name || user?.nome || 'U').charAt(0)}</div>
-              {/* 🔪 CIRURGIA 3: Botão de Logout injetado no Header do Mobile */}
               <button onClick={fazerLogout} className="md:hidden p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors ml-1"><LogOut size={20}/></button>
            </div>
         </header>
