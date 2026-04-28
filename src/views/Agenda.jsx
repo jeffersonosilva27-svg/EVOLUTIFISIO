@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { analisarCapacidadePaciente } from '../services/geminiService';
 
 const LOCAIS = [
   'Sala 701', 'Sala 702', 'Sala 703', 'Sala 704', 'Sala 705', 
@@ -85,7 +84,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     const temDisponivel = recomendadas.some(sala => !ocupadas.includes(sala));
     
     if (temDisponivel) {
-      return window.confirm("Atenção: Existem salas preferenciais (701/703/704/705) disponíveis para este atendimento. A Sala 702 deve ser usada apenas como último recurso. Deseja prosseguir mesmo assim?");
+      return window.confirm("Atenção: Existem salas preferenciais disponíveis. A Sala 702 deve ser usada apenas como último recurso. Deseja prosseguir mesmo assim?");
     }
     return true;
   };
@@ -185,22 +184,24 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     <div className="flex flex-col h-full space-y-4 animate-in fade-in relative">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm shrink-0">
         <h2 className="text-xl font-black text-slate-900 uppercase">Agenda Clínica</h2>
-        <div className="flex items-center bg-slate-50 p-1.5 rounded-2xl">
+        <div className="flex items-center bg-slate-50 p-1.5 rounded-2xl w-full md:w-auto justify-between">
           <button onClick={() => { const d = new Date(dataSelecionada); d.setDate(d.getDate()-7); setDataSelecionada(d); }} className="p-2"><ChevronLeft size={18}/></button>
           <button onClick={() => setDataSelecionada(new Date())} className="px-5 py-2 font-black text-[11px] uppercase">Hoje</button>
           <button onClick={() => { const d = new Date(dataSelecionada); d.setDate(d.getDate()+7); setDataSelecionada(d); }} className="p-2"><ChevronRight size={18}/></button>
         </div>
-        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); }} className="bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 text-sm"><Plus size={18}/> Novo Agendamento</button>
+        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); }} className="w-full md:w-auto bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm"><Plus size={18}/> Novo Agendamento</button>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 flex-1 overflow-hidden flex flex-col shadow-sm">
-        <div className="overflow-auto flex-1 relative">
-          <table className="w-full border-collapse">
+      {/* OTIMIZAÇÃO MOBILE AQUI: w-full overflow-x-auto e min-w-0 */}
+      <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-w-0 overflow-hidden">
+        <div className="overflow-x-auto overflow-y-auto flex-1 relative w-full touch-pan-x custom-scrollbar">
+          {/* Tabela com min-w-[800px] garante o scroll nativo em telas menores */}
+          <table className="w-full border-collapse min-w-[800px]">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md">
               <tr>
-                <th className="p-3 border-b border-r text-left min-w-[140px] sticky left-0 bg-slate-50 z-40"><span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Profissional</span></th>
+                <th className="p-3 border-b border-r text-left min-w-[120px] sticky left-0 bg-slate-50 z-40"><span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Profissional</span></th>
                 {dias.map(dia => (
-                  <th key={dia.toISOString()} className={`p-2 border-b min-w-[150px] text-center ${obterDataLocalISO(dia) === hoje ? 'bg-blue-50/80 border-b-4 border-b-[#00A1FF]' : ''}`}>
+                  <th key={dia.toISOString()} className={`p-2 border-b min-w-[130px] text-center ${obterDataLocalISO(dia) === hoje ? 'bg-blue-50/80 border-b-4 border-b-[#00A1FF]' : ''}`}>
                     <div className="text-[9px] font-black uppercase text-slate-400">{DIAS_NOMES[dia.getDay()]}</div>
                     <div className="text-lg font-black text-slate-800">{dia.getDate()}</div>
                   </th>
@@ -212,10 +213,10 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                 <tr key={prof.id} className={prof.id === user.id ? 'bg-blue-50/30' : ''}>
                   <td className="p-3 border-r border-b sticky left-0 bg-white z-20 shadow-sm align-top">
                     <div className="font-black text-slate-800 text-[11px] truncate flex items-center gap-1">
-                        {prof.id === user.id && <div className="w-2 h-2 bg-green-500 rounded-full"></div>}
-                        {prof.nome}
+                        {prof.id === user.id && <div className="w-2 h-2 bg-green-500 rounded-full shrink-0"></div>}
+                        <span className="truncate">{prof.nome}</span>
                     </div>
-                    <div className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">{prof.categoriaBase}</div>
+                    <div className="text-[8px] font-bold text-slate-400 uppercase mt-0.5 truncate">{prof.categoriaBase}</div>
                   </td>
                   {dias.map(dia => {
                     const iso = obterDataLocalISO(dia);
@@ -235,7 +236,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                             : 'bg-white border-blue-100 hover:border-[#00A1FF]';
 
                           return (
-                            <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all shadow-sm ${cardClasses}`}>
+                            <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all shadow-sm flex flex-col justify-between min-h-[60px] ${cardClasses}`}>
                                {isCancelado ? (
                                   <div className="flex items-center gap-1.5" title={`Cancelado: ${ag.motivoCancelamento}`}>
                                      <span className="text-[8px] font-black">{ag.hora}</span>
@@ -245,12 +246,10 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                                   <>
                                     <div className="flex justify-between items-start mb-1">
                                        <span className={`text-[10px] font-black ${isConfirmado ? 'text-[#00A1FF]' : 'text-slate-700'}`}>{ag.hora}</span>
-                                       
-                                       {/* A LÂMPADA INDICADORA AGORA LÊ OS EXERCÍCIOS MODULADOS */}
-                                       {ag.exerciciosPlanejados && ag.exerciciosPlanejados.length > 0 && <Lightbulb size={12} className="text-amber-500 fill-amber-400/30" title="Sessão Modulada (Possui exercícios planejados)" />}
+                                       {ag.exerciciosPlanejados && ag.exerciciosPlanejados.length > 0 && <Lightbulb size={12} className="text-amber-500 fill-amber-400/30 shrink-0" title="Sessão Modulada" />}
                                     </div>
                                     <div className={`font-black text-[10px] truncate uppercase ${isConfirmado ? 'text-[#0F214A]' : 'text-slate-800'}`}>{ag.paciente}</div>
-                                    <div className="flex items-center gap-1 text-[7px] font-black text-slate-500 uppercase mt-1"><MapPin size={8}/> {ag.local}</div>
+                                    <div className="flex items-center gap-1 text-[7px] font-black text-slate-500 uppercase mt-auto"><MapPin size={8} className="shrink-0"/> <span className="truncate">{ag.local}</span></div>
                                   </>
                                )}
                             </div>
@@ -268,7 +267,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
 
       {mostrarForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
              <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-black uppercase text-[#0F214A]">{agendamentoEditando ? 'Gerir Sessão' : 'Novo Agendamento'}</h3>
                 <button onClick={fecharFormularioGeral} className="p-2 bg-slate-100 rounded-full hover:text-red-500"><X size={18}/></button>
@@ -306,18 +305,18 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                  </div>
              ) : (
                  <form onSubmit={tentarSalvar} className="space-y-3">
-                    <select required className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent" value={form.pacienteId} onChange={e => setForm({...form, pacienteId: e.target.value, pacienteNome: pacientes.find(p=>p.id===e.target.value)?.nome})}>
+                    <select required className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent truncate" value={form.pacienteId} onChange={e => setForm({...form, pacienteId: e.target.value, pacienteNome: pacientes.find(p=>p.id===e.target.value)?.nome})}>
                       <option value="">Selecionar Paciente...</option>
                       {pacientesOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                     </select>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p.nome}); }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent truncate" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p.nome}); }}>
                           <option value="">Fisioterapeuta / TO...</option>
                           {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                       </select>
 
-                      <select required className={`p-3 rounded-xl font-bold text-sm outline-none border-2 ${getSalasRecomendadas().includes(form.local) ? 'border-green-200 bg-green-50' : 'bg-slate-50 border-transparent'}`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
+                      <select required className={`p-3 rounded-xl font-bold text-sm outline-none border-2 truncate ${getSalasRecomendadas().includes(form.local) ? 'border-green-200 bg-green-50' : 'bg-slate-50 border-transparent'}`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
                           <option value="">Selecionar Sala...</option>
                           {LOCAIS.map(l => (
                             <option key={l} value={l}>
@@ -329,14 +328,14 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
 
                     {form.profissionalId && (
                       <div className="px-3 py-2 bg-blue-50 rounded-lg text-[10px] font-bold text-blue-700 flex items-center gap-2">
-                        <MapPin size={12}/> Sugestão: {getSalasRecomendadas().join(' ou ')}. Use a 702 apenas se necessário.
+                        <MapPin size={12} className="shrink-0"/> Sugestão: {getSalasRecomendadas().join(' ou ')}. Use a 702 apenas se necessário.
                       </div>
                     )}
 
-                    <div className="p-5 bg-slate-50 rounded-[20px] border border-slate-100">
+                    <div className="p-4 bg-slate-50 rounded-[20px] border border-slate-100">
                        <div className="grid grid-cols-2 gap-3">
-                          <input type="date" className="p-3 bg-white rounded-xl font-bold text-sm" value={form.data} onChange={e => setForm({...form, data: e.target.value})} />
-                          <input type="time" className="p-3 bg-white rounded-xl font-bold text-sm" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} />
+                          <input type="date" className="p-3 bg-white rounded-xl font-bold text-sm w-full" value={form.data} onChange={e => setForm({...form, data: e.target.value})} />
+                          <input type="time" className="p-3 bg-white rounded-xl font-bold text-sm w-full" value={form.hora} onChange={e => setForm({...form, hora: e.target.value})} />
                        </div>
                     </div>
                     <button type="submit" disabled={carregandoIA} className="w-full bg-[#0F214A] text-white py-4 rounded-xl font-black text-sm hover:bg-[#00A1FF] transition-all">
