@@ -22,12 +22,10 @@ export default function Equipe({ user }) {
     return () => unsub();
   }, [user]);
 
-  // CORREÇÃO: A ativação agora preserva a "role" (Nível de Acesso) e não esmaga o Gestor!
   const alterarStatus = async (prof, novoStatus) => {
     try { 
       let updateData = { status: novoStatus };
       if (novoStatus === 'ativo' && prof.role === 'pendente') {
-          // Se for novo, herda a categoria, mas se for gestor, mantém!
           updateData.role = prof.categoriaBase;
       }
       await updateDoc(doc(db, "profissionais", prof.id), updateData); 
@@ -40,7 +38,6 @@ export default function Equipe({ user }) {
     setSalvando(true);
     try {
       const { id, nome, categoriaBase, registro, email, role } = editandoProf;
-      // Salva os dados e o Nível de Acesso (role) escolhido
       await updateDoc(doc(db, "profissionais", id), { nome, categoriaBase, registro, email, role: role || categoriaBase });
       alert("Dados do profissional atualizados com sucesso!");
       setEditandoProf(null);
@@ -126,12 +123,21 @@ export default function Equipe({ user }) {
               feriasFim: feriasSetup.dataFim
           });
 
-          alert("Férias registadas e agenda redistribuída com sucesso!");
+          alert("Férias registradas e agenda redistribuída com sucesso!");
           setFeriasSetup({ open: false, prof: null, dataInicio: '', dataFim: '', preview: null, msgErro: '' });
 
       } catch (e) { alert("Erro ao confirmar férias."); }
       setSalvando(false);
   };
+
+  // ORDENAÇÃO ALFABÉTICA (Usuário logado no topo, depois A-Z)
+  const profissionaisOrdenados = [...profissionais].sort((a, b) => {
+    if (a.status === 'oculto' && b.status !== 'oculto') return 1;
+    if (b.status === 'oculto' && a.status !== 'oculto') return -1;
+    if (a.id === user.id) return -1; 
+    if (b.id === user.id) return 1;
+    return (a.nome || '').localeCompare(b.nome || '');
+  });
 
   if (user?.role !== 'gestor_clinico') return <div className="p-10 font-black text-slate-400">Acesso restrito.</div>;
   if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-[#00A1FF]"/></div>;
@@ -140,25 +146,23 @@ export default function Equipe({ user }) {
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <div>
         <h1 className="text-3xl font-black text-[#0F214A] tracking-tight flex items-center gap-3">
-          <ShieldCheck className="text-[#00A1FF]" size={32}/> Gestão de Equipa
+          <ShieldCheck className="text-[#00A1FF]" size={32}/> Gestão de Equipe
         </h1>
-        <p className="text-slate-500 font-medium mt-1">Aprove acessos, defina Gestores e planeie férias com redistribuição inteligente.</p>
+        <p className="text-slate-500 font-medium mt-1">Aprove acessos, defina Gestores e planeje férias com redistribuição inteligente.</p>
       </div>
 
       <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-200">
-            <tr><th className="p-6 text-[10px] font-black text-slate-400 uppercase">Profissional & Cargos</th><th className="p-6 text-[10px] font-black text-slate-400 uppercase">Status / Contacto</th><th className="p-6 text-[10px] font-black text-slate-400 uppercase text-right">Ações</th></tr>
+            <tr><th className="p-6 text-[10px] font-black text-slate-400 uppercase">Profissional & Cargos</th><th className="p-6 text-[10px] font-black text-slate-400 uppercase">Status / Contato</th><th className="p-6 text-[10px] font-black text-slate-400 uppercase text-right">Ações</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {profissionais.map(p => (
+            {profissionaisOrdenados.map(p => (
               <tr key={p.id} className={p.status === 'oculto' ? 'opacity-50 bg-slate-50' : 'hover:bg-blue-50/30'}>
                 <td className="p-6">
                   <div className="font-black text-slate-900 text-lg flex items-center flex-wrap gap-2">
                       {p.nome} 
                       {p.id === user.id && <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded uppercase">Você</span>}
-                      
-                      {/* AS DENOMINAÇÕES VOLTARAM: DESTAQUES VISUAIS DOS CARGOS */}
                       {p.role === 'gestor_clinico' && <span className="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded uppercase flex items-center gap-1"><Star size={10}/> Gestor</span>}
                       {p.role === 'admin_fin' && <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded uppercase">Financeiro</span>}
                   </div>
@@ -180,7 +184,7 @@ export default function Equipe({ user }) {
                             <button onClick={() => setEditandoProf({...p})} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors" title="Editar Dados"><Edit3 size={18}/></button>
                         )}
 
-                        {p.status === 'ativo' && <button onClick={() => setFeriasSetup({open: true, prof: p, dataInicio: '', dataFim: '', preview: null, msgErro: ''})} className="p-2 bg-[#e5f5ff] text-[#00A1FF] rounded-xl hover:bg-blue-100 transition-colors" title="Planear Férias"><Palmtree size={18}/></button>}
+                        {p.status === 'ativo' && <button onClick={() => setFeriasSetup({open: true, prof: p, dataInicio: '', dataFim: '', preview: null, msgErro: ''})} className="p-2 bg-[#e5f5ff] text-[#00A1FF] rounded-xl hover:bg-blue-100 transition-colors" title="Planejar Férias"><Palmtree size={18}/></button>}
                         {p.status === 'ferias' && <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors font-bold text-xs" title="Retornar">Regressar</button>}
                         
                         {p.status !== 'oculto' ? (
@@ -197,7 +201,6 @@ export default function Equipe({ user }) {
         </table>
       </div>
 
-      {/* MODAL: EDITAR PROFISSIONAL (AGORA COM NÍVEL DE ACESSO) */}
       {editandoProf && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95">
@@ -225,14 +228,13 @@ export default function Equipe({ user }) {
                    </div>
                 </div>
 
-                {/* CAMPO NOVO: NÍVEL DE ACESSO */}
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                     <label className="text-[10px] font-black uppercase text-[#0F214A] mb-1 block flex items-center gap-1"><ShieldCheck size={12}/> Permissões no Sistema (Role)</label>
                     <select required className="w-full p-3 bg-white border border-blue-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-[#0F214A] text-sm" value={editandoProf.role || editandoProf.categoriaBase} onChange={e => setEditandoProf({...editandoProf, role: e.target.value})}>
                         <option value="gestor_clinico">Gestor Clínico (Acesso Total)</option>
                         <option value="admin_fin">Administrativo / Financeiro</option>
                         <option value="fisio">Profissional de Saúde</option>
-                        <option value="recepcao">Receção</option>
+                        <option value="recepcao">Recepção</option>
                     </select>
                 </div>
 
@@ -248,7 +250,6 @@ export default function Equipe({ user }) {
         </div>
       )}
 
-      {/* MODAL: PLANEJAR FÉRIAS COM REDISTRIBUIÇÃO */}
       {feriasSetup.open && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white p-8 rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh]">
@@ -282,7 +283,7 @@ export default function Equipe({ user }) {
 
                      <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
                          <p className="text-sm font-bold text-blue-900 mb-2">Como funciona a redistribuição?</p>
-                         <p className="text-xs text-blue-800 leading-relaxed font-medium">O sistema encontrará todos os agendamentos deste profissional nas datas informadas e irá transferi-los automaticamente para outros membros da equipa (da mesma categoria). Para manter a continuidade clínica, o mesmo paciente será sempre direcionado para o mesmo fisioterapeuta substituto.</p>
+                         <p className="text-xs text-blue-800 leading-relaxed font-medium">O sistema encontrará todos os agendamentos deste profissional nas datas informadas e irá transferi-los automaticamente para outros membros da equipe (da mesma categoria). Para manter a continuidade clínica, o mesmo paciente será sempre direcionado para o mesmo fisioterapeuta substituto.</p>
                      </div>
 
                      <button onClick={gerarPreviewFerias} disabled={salvando} className="w-full bg-[#0F214A] text-white py-4 rounded-2xl font-black text-lg hover:bg-[#00A1FF] transition-all flex justify-center shadow-lg">
@@ -292,7 +293,7 @@ export default function Equipe({ user }) {
              ) : (
                  <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                      <div className="bg-green-50 text-green-700 p-4 rounded-xl border border-green-100 flex items-center gap-2 text-sm font-bold mb-6 shrink-0">
-                         <CheckCircle2 size={18}/> Previsão gerada com sucesso. Reveja as alterações abaixo.
+                         <CheckCircle2 size={18}/> Previsão gerada com sucesso. Revise as alterações abaixo.
                      </div>
                      
                      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 mb-6 border border-slate-100 rounded-2xl">

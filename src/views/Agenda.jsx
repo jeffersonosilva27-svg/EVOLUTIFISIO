@@ -57,11 +57,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
     const unsubPac = onSnapshot(collection(db, "pacientes"), snap => setPacientes(snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || 'Paciente sem nome' }))));
     const unsubProf = onSnapshot(collection(db, "profissionais"), snap => {
       const profs = snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || '', categoriaBase: d.data()?.categoriaBase || '' })).filter(p => p.nome);
-      profs.sort((a, b) => {
-         if (a.id === user.id) return -1;
-         if (b.id === user.id) return 1;
-         return a.nome.localeCompare(b.nome);
-      });
       setProfissionais(profs);
     });
     return () => { unsubAgenda(); unsubPac(); unsubProf(); };
@@ -73,7 +68,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   };
 
   const verificarConflito = (d, h, pId, l, idIgnorar = null) => {
-    // O sistema ignora os cancelados, libertando a vaga para outro paciente!
     return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && l !== 'Atendimento Domiciliar' && l !== 'Ginásio Clínico')));
   };
 
@@ -205,6 +199,14 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
   
   const agendamentoEditandoInfo = agendamentoEditando ? agendamentos.find(a => a.id === agendamentoEditando) : null;
 
+  // ORDENAÇÃO ALFABÉTICA UNIVERSAL
+  const pacientesOrdenados = [...pacientes].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  const profissionaisOrdenados = [...profissionais].sort((a, b) => {
+    if (a.id === user.id) return -1; // Usuário logado sempre no topo
+    if (b.id === user.id) return 1;
+    return (a.nome || '').localeCompare(b.nome || '');
+  });
+
   if (!user) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-[#00A1FF]" size={40}/></div>;
 
   return (
@@ -240,7 +242,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
               </tr>
             </thead>
             <tbody>
-              {profissionais.map(prof => (
+              {profissionaisOrdenados.map(prof => (
                 <tr key={prof.id} className={prof.id === user.id ? 'bg-blue-50/30' : ''}>
                   <td className="p-3 border-r border-b sticky left-0 bg-white z-20 shadow-sm align-top">
                     <div className="font-black text-slate-800 text-[11px] leading-tight truncate flex items-center gap-1">
@@ -251,17 +253,13 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                   </td>
                   {dias.map(dia => {
                     const iso = obterDataLocalISO(dia);
-                    
-                    // CORREÇÃO: Agora renderiza TUDO, inclusive os cancelados
                     const ags = agendamentos.filter(a => a.data === iso && a.profissionalId === prof.id).sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
-                    
                     return (
                       <td key={iso} className={`p-1.5 border-b border-r border-slate-100 align-top min-h-[100px] ${iso === hoje ? 'bg-blue-50/20' : ''}`}>
                         {ags.map(ag => {
                           const isCancelado = ag.status === 'cancelado';
                           const isFalta = ag.motivoCancelamento === 'Falta sem aviso';
 
-                          // DESIGN COMPACTO PARA OS CANCELADOS
                           if (isCancelado) {
                              return (
                                <div key={ag.id} onClick={() => abrirFormEdicao(ag)} title={`Cancelado: ${ag.motivoCancelamento}`} className={`p-1.5 mb-1.5 rounded-lg border cursor-pointer transition-all flex items-center gap-1.5 ${isFalta ? 'bg-red-50/80 border-red-200 hover:border-red-400' : 'bg-orange-50/80 border-orange-200 hover:border-orange-400'}`}>
@@ -273,7 +271,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                              );
                           }
 
-                          // DESIGN NORMAL PARA ATENDIMENTOS (Pendente ou Realizado)
                           return (
                             <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all shadow-sm flex flex-col ${ag.status === 'realizado' ? 'bg-green-50 border-green-200 opacity-70' : 'bg-white border-blue-100 hover:border-[#00A1FF]'}`}>
                               <div className="flex justify-between items-start mb-1 gap-1">
@@ -333,7 +330,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                                   <input type="date" value={dualExistente.data} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500" />
                                   <input type="time" value={dualExistente.hora} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500" />
                                   <select value={dualExistente.profissionalId} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500">
-                                      {profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                                      {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                                   </select>
                                   <select value={dualExistente.local} disabled className="w-full p-3 rounded-lg border border-slate-200 font-bold text-xs bg-slate-100 text-slate-500">
                                       {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
@@ -347,7 +344,7 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                                   <input type="date" value={dualNovo.data} onChange={e => setDualNovo({...dualNovo, data: e.target.value})} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none" />
                                   <input type="time" value={dualNovo.hora} onChange={e => setDualNovo({...dualNovo, hora: e.target.value})} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none" />
                                   <select value={dualNovo.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setDualNovo({...dualNovo, profissionalId: p.id, profissionalNome: p.nome}); }} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none">
-                                      {profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                                      {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                                   </select>
                                   <select value={dualNovo.local} onChange={e => setDualNovo({...dualNovo, local: e.target.value})} className="w-full p-3 rounded-lg border border-transparent focus:border-[#00A1FF] font-bold text-xs bg-white outline-none">
                                       {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
@@ -397,7 +394,6 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
                </div>
              )}
 
-             {/* TELA DE CANCELAMENTO DETALHADO */}
              {modoCancelamento && (
                  <div className="mb-6 p-5 bg-orange-50 border border-orange-200 rounded-2xl animate-in fade-in zoom-in-95">
                      <h4 className="font-black text-orange-800 mb-3 flex items-center gap-2"><Ban size={18}/> Qual o motivo do cancelamento?</h4>
@@ -419,11 +415,13 @@ export default function Agenda({ user, hasAccess, navegarPara }) {
              {!modoCancelamento && (
                  <form onSubmit={tentarSalvar} className="space-y-3">
                     <select required className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.pacienteId} onChange={e => setForm({...form, pacienteId: e.target.value, pacienteNome: pacientes.find(p=>p.id===e.target.value)?.nome})}>
-                      <option value="">Selecionar Paciente...</option>{pacientes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                      <option value="">Selecionar Paciente...</option>
+                      {pacientesOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                     </select>
                     <div className="grid grid-cols-2 gap-3">
                       <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.profissionalId} onChange={e => { const p = profissionais.find(x=>x.id===e.target.value); setForm({...form, profissionalId: p.id, profissionalNome: p.nome}); }}>
-                          <option value="">Fisioterapeuta...</option>{profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                          <option value="">Fisioterapeuta...</option>
+                          {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                       </select>
                       <select required className="p-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:border-[#00A1FF] border-2 border-transparent text-[#0F214A]" value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
                           <option value="">Local...</option>{LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}

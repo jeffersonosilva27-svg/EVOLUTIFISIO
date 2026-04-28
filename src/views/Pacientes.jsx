@@ -41,7 +41,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [planoTratamento, setPlanoTratamento] = useState([]);
   const [novoExercicio, setNovoExercicio] = useState({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
 
-  // ESTADOS DO NOVO MÓDULO DE ESTOQUE/CONSUMO
   const [estoqueGeral, setEstoqueGeral] = useState([]);
   const [consumosPaciente, setConsumosPaciente] = useState([]);
   const [novoConsumo, setNovoConsumo] = useState({ itemId: '', quantidade: 1 });
@@ -57,7 +56,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
   useEffect(() => { paramConsumido.current = false; }, [navParams]);
 
-  // Carrega o Estoque Global para o formulário de consumo
   useEffect(() => {
      const unsubEstoque = onSnapshot(collection(db, "estoque"), snap => {
          setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -140,7 +138,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
       const qPlano = query(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"));
       const unsubPlano = onSnapshot(qPlano, (snapshot) => setPlanoTratamento(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
       
-      // Carrega os consumos deste paciente
       const qConsumos = query(collection(db, "consumos"), where("pacienteId", "==", pacienteSelecionado.id));
       const unsubConsumos = onSnapshot(qConsumos, (snapshot) => {
          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -195,7 +192,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     if(window.confirm("Remover esta prescrição do plano?")) await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
   };
 
-  // FUNÇÕES DE ESTOQUE/CONSUMO
   const lancarProduto = async (e) => {
       e.preventDefault();
       const itemEstoque = estoqueGeral.find(i => i.id === novoConsumo.itemId);
@@ -210,7 +206,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
           const precoVenda = parseFloat(itemEstoque.precoVenda) || 0;
           const precoTotal = precoVenda * novoConsumo.quantidade;
 
-          // 1. Registra na tabela global de consumos (Para o Financeiro ver)
           await addDoc(collection(db, "consumos"), {
               pacienteId: pacienteSelecionado.id,
               pacienteNome: pacienteSelecionado.nome,
@@ -225,7 +220,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
               profissionalId: user?.id
           });
 
-          // 2. Desconta do Estoque Real
           await updateDoc(doc(db, "estoque", itemEstoque.id), {
               quantidade: itemEstoque.quantidade - novoConsumo.quantidade
           });
@@ -238,9 +232,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const estornarProduto = async (consumo) => {
       if (!window.confirm(`Deseja remover este lançamento de ${consumo.itemNome} e devolver a quantidade ao estoque?`)) return;
       try {
-          // 1. Apaga o consumo
           await deleteDoc(doc(db, "consumos", consumo.id));
-          // 2. Devolve ao estoque
           const itemEstoque = estoqueGeral.find(i => i.id === consumo.itemId);
           if (itemEstoque) {
               await updateDoc(doc(db, "estoque", itemEstoque.id), {
@@ -251,13 +243,17 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
       } catch (err) { alert("Erro ao estornar produto."); }
   };
 
+  // ORDENAÇÃO ALFABÉTICA
+  const filtrados = (pacientes || [])
+    .filter(p => (p.nome || '').toLowerCase().includes(termoBusca.toLowerCase()))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
-  const filtrados = (pacientes || []).filter(p => (p.nome || '').toLowerCase().includes(termoBusca.toLowerCase()));
+  const estoqueOrdenado = [...estoqueGeral].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
   const abasDisponiveis = [
     { id: 'historico', icon: History, label: 'Histórico Clínico', restrito: false },
     { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restrito: false },
-    { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restrito: false }, // NOVA ABA
+    { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restrito: false },
     { id: 'financeiro', icon: DollarSign, label: 'Financeiro', restrito: true },
     { id: 'dados', icon: Info, label: 'Arquivos e Exames', restrito: false },
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restrito: false }
@@ -343,7 +339,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
         </div>
 
         <div className="mt-6">
-          {/* ABA 1: HISTÓRICO CLINICO */}
           {tabAtiva === 'historico' && (
             <div className="space-y-6">
                <div className={`p-8 rounded-[32px] border transition-colors ${editandoEvolucaoId ? 'bg-amber-50 border-amber-200' : 'bg-blue-50/50 border-blue-100'}`}>
@@ -408,7 +403,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
             </div>
           )}
 
-          {/* ABA 2: PLANO DE TRATAMENTO */}
           {tabAtiva === 'plano' && (
              <div className="space-y-6 animate-in slide-in-from-bottom-4">
                 <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
@@ -483,7 +477,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
              </div>
           )}
 
-          {/* NOVA ABA: MATERIAIS E PRODUTOS (ESTOQUE) */}
           {tabAtiva === 'produtos' && (
              <div className="space-y-6 animate-in slide-in-from-bottom-4">
                 <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
@@ -495,7 +488,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Material / Produto do Estoque</label>
                            <select required className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoConsumo.itemId} onChange={e => setNovoConsumo({...novoConsumo, itemId: e.target.value})}>
                               <option value="">Selecione o item...</option>
-                              {estoqueGeral.map(item => (
+                              {estoqueOrdenado.map(item => (
                                  <option key={item.id} value={item.id}>
                                     {item.nome} (Estoque: {item.quantidade} {item.unidade}) - R$ {Number(item.precoVenda || 0).toFixed(2)}
                                  </option>

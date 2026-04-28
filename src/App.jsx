@@ -339,7 +339,13 @@ function MainApp() {
             </button>
           ))}
         </nav>
-        <button onClick={fazerLogout} className="p-6 text-red-400 hover:text-red-600 flex flex-col items-center gap-1"><LogOut size={20}/></button>
+        <div className="p-4 flex flex-col items-center gap-4 mt-auto">
+           <button onClick={fazerLogout} className="p-2 text-red-400 hover:text-red-600 transition-colors"><LogOut size={20}/></button>
+           {/* AQUI ESTÁ A TAG DE VERSÃO OFICIAL */}
+           <div className={`text-center font-black text-slate-300 transition-opacity duration-300 ${!isSidebarOpen ? 'opacity-0 h-0 text-[0px]' : 'opacity-100 text-[10px]'}`}>
+              v1.0.0
+           </div>
+        </div>
       </aside>
       <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0 h-full overflow-y-auto print:overflow-visible">
         <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 shrink-0 sticky top-0 z-40 print:hidden">

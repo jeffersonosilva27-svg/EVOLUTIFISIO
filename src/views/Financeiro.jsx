@@ -91,7 +91,9 @@ function ModuloEstoque({ hasAccess }) {
     await updateDoc(doc(db, "estoque", item.id), { quantidade: novaQtd });
   };
 
-  const filtrados = itens.filter(i => i.nome.toLowerCase().includes(termoBusca.toLowerCase()));
+  const filtrados = itens
+    .filter(i => (i.nome||'').toLowerCase().includes(termoBusca.toLowerCase()))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-20 space-y-4">
@@ -245,7 +247,7 @@ function ModuloEstoque({ hasAccess }) {
 // MÓDULO PRINCIPAL DE CAIXA E FATURAMENTO
 // =========================================================================================
 export default function Financeiro({ user, navegarPara, hasAccess }) {
-  const [tabAtiva, setTabAtiva] = useState('caixa'); // CONTROLE DAS ABAS SUPERIORES
+  const [tabAtiva, setTabAtiva] = useState('caixa'); 
 
   const [agendamentos, setAgendamentos] = useState([]);
   const [pacientes, setPacientes] = useState([]);
@@ -268,6 +270,18 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
 
   const avancarMes = () => setMesFiltro(prev => prev === 11 ? 0 : prev + 1);
   const voltarMes = () => setMesFiltro(prev => prev === 0 ? 11 : prev - 1);
+
+  // NOVA FUNÇÃO: Exorcizar Fantasmas (Apagar agendamentos de pacientes excluídos)
+  const apagarFantasma = async (id, nome) => {
+    if (window.confirm(`Este é um registro órfão de "${nome}" (o paciente foi excluído). Deseja apagar esta sessão permanentemente do banco de dados?`)) {
+        try {
+            await deleteDoc(doc(db, "agendamentos", id));
+            alert("Fantasma exorcizado com sucesso! 👻🔫");
+        } catch (e) {
+            alert("Erro ao apagar o registro.");
+        }
+    }
+  };
 
   const calcularMetricas = () => {
     let realizado = 0; let projetado = 0; let sessoesRealizadasCount = 0; const porProfissional = {};
@@ -321,12 +335,13 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
       ...consumosGlobais.filter(c => new Date(c.data).getMonth() === mesFiltro).map(c => ({...c, tipoDoc: 'produto', sortDate: new Date(c.data)}))
   ].sort((a,b) => b.sortDate - a.sortDate);
 
+  const pacientesOrdenados = [...pacientes].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
   if (loading) return ( <div className="h-full flex flex-col items-center justify-center"><Loader2 className="animate-spin text-[#00A1FF] mb-4" size={48} /><p className="font-black text-slate-400 uppercase text-xs">Sincronizando faturamento...</p></div> );
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20 print:bg-white print:m-0 print:p-0">
       
-      {/* NAVEGAÇÃO DE ABAS SUPERIOR */}
       <div className="flex border-b border-slate-200 print:hidden overflow-x-auto custom-scrollbar">
          <button onClick={() => setTabAtiva('caixa')} className={`px-8 py-4 flex items-center gap-2 text-sm font-black transition-all border-b-4 whitespace-nowrap ${tabAtiva === 'caixa' ? 'border-[#00A1FF] text-[#00A1FF] bg-[#00A1FF]/5' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
             <DollarSign size={18}/> Fluxo de Caixa
@@ -391,19 +406,36 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
                          if (item.tipoDoc === 'sessao') {
                              const pac = pacientes.find(p => p.id === item.pacienteId); 
                              const valorSessao = parseValor(pac?.valor);
+                             
+                             // MÁGICA AQUI: Se não achar o paciente, é um Fantasma!
+                             const isFantasma = !pac;
+
                              return (
                                <div key={`sessao-${item.id}`} className={`flex justify-between items-center p-4 bg-slate-50 rounded-2xl border transition-all group ${valorSessao === 0 ? 'border-red-200' : 'border-slate-200 hover:border-[#00A1FF]'}`}>
                                   <div>
-                                    <p className="font-black text-slate-800 text-sm group-hover:text-[#00A1FF] transition-colors">{item.paciente}</p>
+                                    <p className="font-black text-slate-800 text-sm group-hover:text-[#00A1FF] transition-colors">
+                                        {item.paciente} {isFantasma && <span className="text-[9px] text-red-500 ml-1">(Excluído)</span>}
+                                    </p>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{new Date(item.data).toLocaleDateString('pt-BR')} • {(item.profissional || 'Equipe').split(' ')[0]}</p>
                                   </div>
                                   <div className="flex flex-col items-end">
                                     {valorSessao > 0 ? (
                                         <p className="font-black text-slate-900">R$ {valorSessao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                     ) : (
-                                        <button onClick={() => navegarPara && navegarPara('pacientes', { pacienteId: item.pacienteId })} className="font-black text-red-600 flex items-center gap-1 text-[11px] bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded-lg transition-colors shadow-sm" title="Ir para a ficha">
-                                           <AlertTriangle size={14}/> Corrigir Cadastro
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            {!isFantasma ? (
+                                                <button onClick={() => navegarPara && navegarPara('pacientes', { pacienteId: item.pacienteId })} className="font-black text-amber-600 flex items-center gap-1 text-[11px] bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-lg transition-colors shadow-sm" title="Ir para a ficha">
+                                                   <AlertTriangle size={14}/> Sem Valor
+                                                </button>
+                                            ) : null}
+                                            
+                                            {/* O CAÇA-FANTASMAS EM AÇÃO */}
+                                            {isFantasma && (
+                                                <button onClick={() => apagarFantasma(item.id, item.paciente)} className="font-black text-red-600 flex items-center gap-1 text-[11px] bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded-lg transition-colors shadow-sm" title="Apagar este registro órfão do sistema">
+                                                   <Trash2 size={14}/> Limpar Erro
+                                                </button>
+                                            )}
+                                        </div>
                                     )}
                                     <span className="text-[9px] font-black text-green-600 bg-green-100 px-2 py-0.5 rounded uppercase mt-1">Sessão</span>
                                   </div>
@@ -442,7 +474,7 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
                      </div>
                      <select value={pacienteRelatorio} onChange={(e) => setPacienteRelatorio(e.target.value)} className="w-64 p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-[#00A1FF]">
                         <option value="">Selecionar Paciente...</option>
-                        {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                        {pacientesOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                      </select>
                   </div>
 
