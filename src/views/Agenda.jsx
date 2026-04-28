@@ -39,7 +39,6 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     data: obterDataLocalISO(new Date()), hora: '08:00', profissionalId: '', profissionalNome: '' 
   });
 
-  // ESTADOS DO AGENDAMENTO EM LOTE
   const [isLote, setIsLote] = useState(false);
   const [loteConfig, setLoteConfig] = useState({ quantidade: 10, diasSemana: [] });
 
@@ -59,6 +58,12 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
   const verificarConflito = (d, h, pId, l, idIgnorar = null) => {
     return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && !['Atendimento Domiciliar', 'Ginásio Clínico', 'Atendimento Hospitalar'].includes(l))));
+  };
+
+  const getSalasRecomendadas = () => {
+    const prof = profissionais.find(p => p.id === form.profissionalId);
+    if (!prof) return [];
+    return prof.categoriaBase === 'fisio' ? ['Sala 701', 'Sala 703'] : ['Sala 704', 'Sala 705'];
   };
 
   const abrirFormEdicao = (agend) => {
@@ -128,18 +133,22 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     setCarregandoIA(false);
   };
 
-  const confirmarAtendimento = async () => {
-    await updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'confirmado' });
-    fecharFormularioGeral();
-  };
-
+  // ORDENAÇÃO: O perfil do utilizador logado no topo, e os restantes por ordem alfabética
   const pacientesOrdenados = [...pacientes].sort((a, b) => a.nome.localeCompare(b.nome));
-  const profissionaisOrdenados = [...profissionais].sort((a, b) => a.nome.localeCompare(b.nome));
+  const profissionaisOrdenados = [...profissionais].sort((a, b) => {
+      if (a.id === user?.id) return -1;
+      if (b.id === user?.id) return 1;
+      return a.nome.localeCompare(b.nome);
+  });
+  
   const dias = (() => { const dArr = []; const inicio = new Date(dataSelecionada); inicio.setDate(inicio.getDate() - inicio.getDay()); for (let i = 0; i < 7; i++) { dArr.push(new Date(inicio)); inicio.setDate(inicio.getDate() + 1); } return dArr; })();
   const hoje = obterDataLocalISO(new Date());
 
+  if (!user) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-[#00A1FF]" size={40}/></div>;
+
   return (
-    <div className="flex flex-col h-full space-y-4 animate-in fade-in relative">
+    // OTIMIZAÇÃO: A altura foi estritamente definida h-[calc(...)] para que o overflow-y-auto funcione dentro da tabela
+    <div className="flex flex-col space-y-4 animate-in fade-in relative h-[calc(100vh-180px)] md:h-[calc(100vh-140px)]">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm shrink-0">
         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Agenda Clínica</h2>
         <div className="flex items-center bg-slate-50 p-1.5 rounded-2xl w-full md:w-auto justify-between">
@@ -147,13 +156,13 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
           <button onClick={() => setDataSelecionada(new Date())} className="px-5 py-2 font-black text-[11px] uppercase">Hoje</button>
           <button onClick={() => { const d = new Date(dataSelecionada); d.setDate(d.getDate()+7); setDataSelecionada(d); }} className="p-2 hover:bg-white rounded-xl transition-colors"><ChevronRight size={18}/></button>
         </div>
-        <button onClick={() => { setAgendamentoEditando(null); setMostrarForm(true); }} className="w-full md:w-auto bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-100"><Plus size={18}/> Novo Agendamento</button>
+        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); }} className="w-full md:w-auto bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-100"><Plus size={18}/> Novo Agendamento</button>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-w-0 overflow-hidden">
-        <div className="overflow-x-auto overflow-y-auto flex-1 relative w-full touch-pan-x custom-scrollbar">
+      <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-h-0 overflow-hidden">
+        <div className="overflow-x-auto overflow-y-auto flex-1 w-full touch-pan-x custom-scrollbar">
           <table className="w-full border-collapse min-w-[850px]">
-            <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md">
+            <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md shadow-sm">
               <tr>
                 <th className="p-3 border-b border-r text-left min-w-[130px] sticky left-0 bg-slate-50 z-40 shadow-[2px_0_5px_rgba(0,0,0,0.05)]"><span className="text-[10px] font-black text-slate-400 uppercase">Profissional</span></th>
                 {dias.map(dia => (
@@ -211,7 +220,7 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                  <button onClick={() => { fecharFormularioGeral(); navegarPara('pacientes', { pacienteId: form.pacienteId, atualizarStatusAgendamento: agendamentoEditando }); }} className="bg-green-600 text-white py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs shadow-md">
                     <FileText size={14}/> Prontuário
                  </button>
-                 <button onClick={confirmarAtendimento} className="bg-blue-50 text-blue-600 py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs border border-blue-200">
+                 <button onClick={async () => { await updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'confirmado' }); fecharFormularioGeral(); }} className="bg-blue-50 text-blue-600 py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs border border-blue-200">
                     <CheckCircle2 size={14}/> Confirmar
                  </button>
                  <button onClick={() => setModoCancelamento(true)} className="bg-orange-50 text-orange-600 py-3 rounded-xl font-bold flex justify-center items-center gap-1.5 text-xs border border-orange-200">
@@ -251,7 +260,7 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                           <option value="">Fisio / TO...</option>
                           {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                       </select>
-                      <select required className="p-3.5 bg-slate-50 rounded-2xl font-bold text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] focus:bg-white" value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
+                      <select required className={`p-3.5 bg-slate-50 rounded-2xl font-bold text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] focus:bg-white`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
                           <option value="">Sala / Local...</option>
                           {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
                       </select>
