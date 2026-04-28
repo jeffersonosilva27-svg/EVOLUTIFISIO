@@ -13,7 +13,6 @@ import Pacientes from './views/Pacientes';
 import Financeiro from './views/Financeiro';
 import Avaliacoes from './views/Avaliacoes';
 import Equipe from './views/Equipe';
-import Estoque from './views/Estoque'; // NOVA GUIA
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -60,7 +59,7 @@ const TUTORIAL_STEPS = [
   { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes. O algoritmo ativará a 'Dupla Janela' se houver sobreposição de horários.", view: 'agenda', botao: "Ir para Clínico" },
   { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário, escrever evoluções guiadas por IA e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
   { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento'. Você pode prescrever exercícios focados em grupos musculares e TMI.", view: 'pacientes', botao: "Conhecer o Caixa" },
-  { chapterId: 'money', titulo: "Fluxo de Caixa e Estoque", texto: "Além do financeiro automático, agora você controla materiais na aba Estoque. O sistema avisa quando algo estiver acabando!", view: 'estoque', botao: "Finalizar Tour" },
+  { chapterId: 'money', titulo: "Caixa e Estoque", texto: "Na guia de Caixa & Estoque você fatura as sessões automaticamente e controla os materiais da clínica em abas separadas!", view: 'financeiro', botao: "Finalizar Tour" },
   { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "Você concluiu o tour! O sistema está pronto para receber toda a sua energia. Se precisar de mim novamente, clique no ícone do raio azul lá em cima!", view: 'dashboard', botao: "Começar a Usar Agora" }
 ];
 
@@ -174,8 +173,7 @@ function MainApp() {
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Activity, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
-    { id: 'estoque', icon: Package, label: 'Estoque', roles: ['any'] }, // MENU ADICIONADO
-    { id: 'financeiro', icon: DollarSign, label: 'Caixa', roles: ['gestor_clinico', 'admin_fin'] },
+    { id: 'financeiro', icon: DollarSign, label: 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin'] },
     { id: 'equipe', icon: Settings, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
 
@@ -359,8 +357,7 @@ function MainApp() {
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} />}
               {currentView === 'pacientes' && <Pacientes pacientes={pacientes} hasAccess={hasAccess} user={user} navParams={navParams} />}
               {currentView === 'avaliacoes' && <Avaliacoes hasAccess={hasAccess} />}
-              {currentView === 'estoque' && <Estoque user={user} hasAccess={hasAccess} />}
-              {currentView === 'financeiro' && <Financeiro user={user} navegarPara={navegarPara} />}
+              {currentView === 'financeiro' && <Financeiro user={user} hasAccess={hasAccess} navegarPara={navegarPara} />}
               {currentView === 'equipe' && <Equipe user={user} />}
            </div>
         </div>

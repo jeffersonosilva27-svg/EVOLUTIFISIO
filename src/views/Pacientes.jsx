@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
   Trash2, Edit3, DollarSign, Sparkles, Download, ChevronRight, MessageCircle,
-  TrendingDown, History, Info, Loader2, FileText, CalendarClock, Dumbbell, Target, ShieldAlert
+  TrendingDown, History, Info, Loader2, FileText, CalendarClock, Dumbbell, Target, ShieldAlert, Package, ShoppingCart
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
 import { realizarAnaliseIAHistorico, transcreverExameIA } from '../services/geminiService';
 
 const GRUPOS_MUSCULARES = [
@@ -41,6 +41,11 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   const [planoTratamento, setPlanoTratamento] = useState([]);
   const [novoExercicio, setNovoExercicio] = useState({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
 
+  // ESTADOS DO NOVO MÓDULO DE ESTOQUE/CONSUMO
+  const [estoqueGeral, setEstoqueGeral] = useState([]);
+  const [consumosPaciente, setConsumosPaciente] = useState([]);
+  const [novoConsumo, setNovoConsumo] = useState({ itemId: '', quantidade: 1 });
+
   const paramConsumido = useRef(false);
 
   useEffect(() => {
@@ -52,6 +57,13 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
 
   useEffect(() => { paramConsumido.current = false; }, [navParams]);
 
+  // Carrega o Estoque Global para o formulário de consumo
+  useEffect(() => {
+     const unsubEstoque = onSnapshot(collection(db, "estoque"), snap => {
+         setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+     });
+     return () => unsubEstoque();
+  }, []);
 
   const salvarPaciente = async (e) => {
     e.preventDefault();
@@ -124,11 +136,20 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
       setConfirmarExclusao(false);
       const qEvo = query(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), orderBy("data", "desc"));
       const unsubEvo = onSnapshot(qEvo, (snapshot) => setEvolucoes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+      
       const qPlano = query(collection(db, "pacientes", pacienteSelecionado.id, "plano_tratamento"));
       const unsubPlano = onSnapshot(qPlano, (snapshot) => setPlanoTratamento(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
       
+      // Carrega os consumos deste paciente
+      const qConsumos = query(collection(db, "consumos"), where("pacienteId", "==", pacienteSelecionado.id));
+      const unsubConsumos = onSnapshot(qConsumos, (snapshot) => {
+         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+         list.sort((a,b) => new Date(b.data) - new Date(a.data));
+         setConsumosPaciente(list);
+      });
+
       setLaudoExame(''); setAnaliseIA(''); setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(0);
-      return () => { unsubEvo(); unsubPlano(); };
+      return () => { unsubEvo(); unsubPlano(); unsubConsumos(); };
     }
   }, [pacienteSelecionado]);
 
@@ -140,7 +161,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
   };
 
   const apagarEvolucao = async (id) => {
-    if(window.confirm("Tem a certeza que deseja apagar esta evolução de forma permanente? O seu nome ficará no registo do sistema.")) {
+    if(window.confirm("Tem a certeza que deseja apagar esta evolução de forma permanente? O seu nome ficará no registro do sistema.")) {
         try { await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", id)); } 
         catch (e) { alert("Erro ao apagar evolução."); }
     }
@@ -174,11 +195,69 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     if(window.confirm("Remover esta prescrição do plano?")) await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "plano_tratamento", id));
   };
 
+  // FUNÇÕES DE ESTOQUE/CONSUMO
+  const lancarProduto = async (e) => {
+      e.preventDefault();
+      const itemEstoque = estoqueGeral.find(i => i.id === novoConsumo.itemId);
+      if (!itemEstoque) return alert("Selecione um produto válido.");
+      if (novoConsumo.quantidade <= 0) return alert("A quantidade deve ser maior que zero.");
+      
+      if (itemEstoque.quantidade < novoConsumo.quantidade) {
+          if (!window.confirm(`Atenção: O estoque atual (${itemEstoque.quantidade} ${itemEstoque.unidade}) é menor que a quantidade informada. Deseja lançar assim mesmo e deixar o estoque negativo?`)) return;
+      }
+
+      try {
+          const precoVenda = parseFloat(itemEstoque.precoVenda) || 0;
+          const precoTotal = precoVenda * novoConsumo.quantidade;
+
+          // 1. Registra na tabela global de consumos (Para o Financeiro ver)
+          await addDoc(collection(db, "consumos"), {
+              pacienteId: pacienteSelecionado.id,
+              pacienteNome: pacienteSelecionado.nome,
+              itemId: itemEstoque.id,
+              itemNome: itemEstoque.nome,
+              unidade: itemEstoque.unidade,
+              quantidade: novoConsumo.quantidade,
+              precoUnitario: precoVenda,
+              precoTotal: precoTotal,
+              data: new Date().toISOString(),
+              profissional: user?.name || user?.nome || 'Equipe',
+              profissionalId: user?.id
+          });
+
+          // 2. Desconta do Estoque Real
+          await updateDoc(doc(db, "estoque", itemEstoque.id), {
+              quantidade: itemEstoque.quantidade - novoConsumo.quantidade
+          });
+
+          alert("Produto lançado e descontado do estoque com sucesso!");
+          setNovoConsumo({ itemId: '', quantidade: 1 });
+      } catch (err) { alert("Erro ao lançar produto."); }
+  };
+
+  const estornarProduto = async (consumo) => {
+      if (!window.confirm(`Deseja remover este lançamento de ${consumo.itemNome} e devolver a quantidade ao estoque?`)) return;
+      try {
+          // 1. Apaga o consumo
+          await deleteDoc(doc(db, "consumos", consumo.id));
+          // 2. Devolve ao estoque
+          const itemEstoque = estoqueGeral.find(i => i.id === consumo.itemId);
+          if (itemEstoque) {
+              await updateDoc(doc(db, "estoque", itemEstoque.id), {
+                  quantidade: itemEstoque.quantidade + consumo.quantidade
+              });
+          }
+          alert("Lançamento estornado com sucesso!");
+      } catch (err) { alert("Erro ao estornar produto."); }
+  };
+
+
   const filtrados = (pacientes || []).filter(p => (p.nome || '').toLowerCase().includes(termoBusca.toLowerCase()));
 
   const abasDisponiveis = [
     { id: 'historico', icon: History, label: 'Histórico Clínico', restrito: false },
     { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restrito: false },
+    { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restrito: false }, // NOVA ABA
     { id: 'financeiro', icon: DollarSign, label: 'Financeiro', restrito: true },
     { id: 'dados', icon: Info, label: 'Arquivos e Exames', restrito: false },
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restrito: false }
@@ -264,6 +343,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
         </div>
 
         <div className="mt-6">
+          {/* ABA 1: HISTÓRICO CLINICO */}
           {tabAtiva === 'historico' && (
             <div className="space-y-6">
                <div className={`p-8 rounded-[32px] border transition-colors ${editandoEvolucaoId ? 'bg-amber-50 border-amber-200' : 'bg-blue-50/50 border-blue-100'}`}>
@@ -290,7 +370,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                <div className="space-y-4">
                   {evolucoes.map(evo => {
                     const nomeUserLogado = user?.name || user?.nome || '';
-                    const isOwner = evo.profissionalId === user?.id || (!evo.profissionalId && evo.profissional === nomeUserLogado);
+                    const isOwner = evo.profissionalId === user?.id || (!evo.profissionalId && evo.profissional === nomeUserLogado) || user?.role === 'gestor_clinico';
 
                     return (
                         <div key={evo.id} className={`bg-white p-6 rounded-[24px] border shadow-sm transition-all ${editandoEvolucaoId === evo.id ? 'border-amber-400 ring-4 ring-amber-50' : 'border-slate-100 hover:border-blue-200'}`}>
@@ -314,9 +394,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                                     <button onClick={() => apagarEvolucao(evo.id)} className="text-red-500 hover:text-red-700 flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg transition-colors"><Trash2 size={12}/> Apagar</button>
                                 </div>
                             ) : (
-                                <div className="mr-2 flex items-center gap-1 text-slate-300" title="Apenas o profissional que registou pode alterar.">
-                                    <ShieldAlert size={12}/> Bloqueado
-                                </div>
+                                <div className="mr-2 flex items-center gap-1 text-slate-300" title="Apenas o profissional que registrou pode alterar."><ShieldAlert size={12}/> Bloqueado</div>
                             )}
 
                             <span className="text-slate-600 uppercase flex items-center gap-1"><Award size={12}/> {evo.profissional}</span>
@@ -330,6 +408,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
             </div>
           )}
 
+          {/* ABA 2: PLANO DE TRATAMENTO */}
           {tabAtiva === 'plano' && (
              <div className="space-y-6 animate-in slide-in-from-bottom-4">
                 <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
@@ -404,19 +483,86 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
              </div>
           )}
 
+          {/* NOVA ABA: MATERIAIS E PRODUTOS (ESTOQUE) */}
+          {tabAtiva === 'produtos' && (
+             <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+                   <h3 className="font-black text-[#0F214A] mb-6 flex items-center"><ShoppingCart className="text-[#00A1FF] mr-2"/> Lançamento de Materiais</h3>
+                   
+                   <form onSubmit={lancarProduto} className="bg-slate-50 p-6 rounded-2xl border border-slate-200 mb-8">
+                      <div className="flex flex-col md:flex-row items-end gap-4">
+                         <div className="flex-1 w-full">
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Material / Produto do Estoque</label>
+                           <select required className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoConsumo.itemId} onChange={e => setNovoConsumo({...novoConsumo, itemId: e.target.value})}>
+                              <option value="">Selecione o item...</option>
+                              {estoqueGeral.map(item => (
+                                 <option key={item.id} value={item.id}>
+                                    {item.nome} (Estoque: {item.quantidade} {item.unidade}) - R$ {Number(item.precoVenda || 0).toFixed(2)}
+                                 </option>
+                              ))}
+                           </select>
+                         </div>
+                         
+                         <div className="w-full md:w-32">
+                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Quantidade</label>
+                           <input required type="number" min="1" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-black text-[#0F214A] text-center text-sm" value={novoConsumo.quantidade} onChange={e => setNovoConsumo({...novoConsumo, quantidade: parseInt(e.target.value)})} />
+                         </div>
+                         
+                         <button type="submit" className="w-full md:w-auto bg-[#00A1FF] text-white px-8 py-3.5 rounded-xl font-black hover:bg-[#0F214A] transition-colors shadow-md text-sm">Registrar Uso</button>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 mt-3">* O valor de venda será automaticamente somado à fatura mensal deste paciente.</p>
+                   </form>
+
+                   <div>
+                      <h4 className="font-black text-slate-700 text-sm uppercase tracking-wide mb-4">Histórico de Materiais Utilizados</h4>
+                      {consumosPaciente.length > 0 ? (
+                         <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                             <table className="w-full text-left">
+                                <thead className="bg-slate-50 border-b border-slate-100">
+                                   <tr>
+                                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase">Data</th>
+                                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase">Item</th>
+                                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Qtd</th>
+                                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-right">Total Gerado</th>
+                                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Ações</th>
+                                   </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                   {consumosPaciente.map(c => (
+                                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                                         <td className="p-4 text-xs font-bold text-slate-500">{new Date(c.data).toLocaleDateString('pt-BR')}</td>
+                                         <td className="p-4 text-sm font-black text-[#0F214A]">{c.itemNome} <span className="text-[10px] font-bold text-slate-400 block font-normal">por {c.profissional.split(' ')[0]}</span></td>
+                                         <td className="p-4 text-sm font-bold text-slate-600 text-center">{c.quantidade} {c.unidade}</td>
+                                         <td className="p-4 text-sm font-black text-green-600 text-right">R$ {Number(c.precoTotal).toFixed(2)}</td>
+                                         <td className="p-4 text-center">
+                                            <button onClick={() => estornarProduto(c)} className="p-2 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors" title="Estornar (Devolver ao Estoque)"><Trash2 size={16}/></button>
+                                         </td>
+                                      </tr>
+                                   ))}
+                                </tbody>
+                             </table>
+                         </div>
+                      ) : (
+                         <div className="text-center py-10 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                            <Package size={32} className="mx-auto text-slate-300 mb-3"/>
+                            <p className="font-bold text-slate-500 text-sm">Nenhum material extra lançado para este paciente.</p>
+                         </div>
+                      )}
+                   </div>
+                </div>
+             </div>
+          )}
+
           {tabAtiva === 'financeiro' && hasAccess(['gestor_clinico', 'admin_fin']) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-2">
                <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
-                  <h3 className="font-black text-slate-800 mb-6 flex items-center"><DollarSign className="text-green-500 mr-2"/> Extrato de Cobrança</h3>
+                  <h3 className="font-black text-slate-800 mb-6 flex items-center"><DollarSign className="text-green-500 mr-2"/> Resumo Rápido</h3>
                   <div className="space-y-4">
                      <div className="flex justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="text-sm font-bold text-slate-600">Sessões Realizadas</span>
-                        <span className="font-black text-slate-900">R$ {(pacienteSelecionado.valor * evolucoes.length).toFixed(2)}</span>
+                        <span className="text-sm font-bold text-slate-600">Valor Base da Sessão</span>
+                        <span className="font-black text-slate-900">R$ {Number(pacienteSelecionado.valor || 0).toFixed(2)}</span>
                      </div>
-                     <div className="flex justify-between p-5 bg-[#00A1FF] text-white rounded-2xl shadow-lg shadow-blue-200">
-                        <span className="text-sm font-black">Total em Aberto</span>
-                        <span className="font-black text-2xl">R$ {(pacienteSelecionado.valor * evolucoes.length).toFixed(2)}</span>
-                     </div>
+                     <p className="text-[10px] font-bold text-slate-400 text-center">* Vá na aba de Caixa/Financeiro global para gerar o Extrato detalhado em PDF incluindo os materiais de estoque.</p>
                   </div>
                </div>
             </div>
@@ -430,7 +576,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                   <input type="file" id="exame" className="hidden" onChange={handleUploadExame} accept="image/*,application/pdf" />
                   <label htmlFor="exame" className="cursor-pointer bg-[#0F214A] text-white px-8 py-4 rounded-xl font-black flex items-center gap-3 hover:bg-[#00A1FF] transition-all shadow-lg">
                     {exameProcessando ? <Loader2 className="animate-spin"/> : <Plus/>} 
-                    {exameProcessando ? 'A Analisar Exame...' : 'Anexar Ficheiro de Exame'}
+                    {exameProcessando ? 'Analisando Exame...' : 'Anexar Arquivo de Exame'}
                   </label>
                   <p className="text-xs text-slate-500 mt-4 font-bold">A IA transcreverá os dados numéricos e gerará um laudo automático.</p>
                 </div>
@@ -455,7 +601,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                 {carregandoIA ? (
                   <div className="flex flex-col items-center justify-center h-64">
                     <Loader2 className="animate-spin text-[#00A1FF] mb-4" size={48}/>
-                    <p className="font-black animate-pulse uppercase tracking-widest text-xs">A ler histórico completo de evoluções...</p>
+                    <p className="font-black animate-pulse uppercase tracking-widest text-xs">Lendo histórico completo de evoluções...</p>
                   </div>
                 ) : analiseIA ? (
                   <div className="prose prose-invert prose-blue max-w-none text-slate-300 font-medium leading-relaxed">
@@ -503,15 +649,12 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
     );
   }
 
-  // ======================================================================
-  // O NOVO LAYOUT DA BASE DE PACIENTES: CARDS COM CONTATO DIRETO WHATSAPP
-  // ======================================================================
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-4xl font-black text-[#0F214A] tracking-tight">Base de Pacientes</h1>
-          <p className="text-slate-500 font-medium mt-1">Gerencie prontuários, faturamento e anexos clínicos.</p>
+          <p className="text-slate-500 font-medium mt-1">Gerencie prontuários, materiais e anexos clínicos.</p>
         </div>
         <button onClick={() => abrirFormulario(null)} className="bg-[#00A1FF] text-white px-8 py-3.5 rounded-2xl font-black shadow-lg shadow-blue-200 hover:bg-[#0F214A] transition-all flex items-center gap-2">
           <Plus size={20}/> Novo Registro
@@ -523,12 +666,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
         <input placeholder="Procurar paciente pelo nome..." className="flex-1 outline-none text-slate-700 bg-transparent font-bold" value={termoBusca} onChange={e => setTermoBusca(e.target.value)} />
       </div>
 
-      {/* A GRID DE CARTÕES DE PACIENTES */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtrados.map(p => {
-           // Formata o número para o link do WhatsApp retirando tudo o que não é número
            const linkWhatsApp = `https://wa.me/${(p.whatsapp || '').replace(/\D/g, '')}`;
-
            return (
              <div key={p.id} onClick={() => setPacienteSelecionado(p)} className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm hover:border-[#00A1FF] hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
                 <div>
@@ -543,15 +683,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams }) {
                    </div>
                 </div>
                 
-                {/* BOTÃO DO WHATSAPP DENTRO DO CARD */}
                 <div className="pt-4 border-t border-slate-100 mt-2">
-                   <a 
-                      href={linkWhatsApp} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      onClick={(e) => e.stopPropagation()} // Impede que o clique no link abra a ficha do paciente
-                      className="flex items-center justify-center gap-2 bg-green-50 text-green-600 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-green-100 transition-colors w-full border border-green-100"
-                   >
+                   <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center justify-center gap-2 bg-green-50 text-green-600 px-4 py-2.5 rounded-xl text-xs font-black hover:bg-green-100 transition-colors w-full border border-green-100">
                      <MessageCircle size={16}/> Enviar Mensagem
                    </a>
                 </div>
