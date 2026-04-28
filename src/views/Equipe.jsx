@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, Loader2, CheckCircle2, UserX, AlertTriangle, UserCheck, Palmtree, Edit3, X, CalendarRange, ArrowRight, Star
+  ShieldCheck, Loader2, CheckCircle2, UserX, AlertTriangle, UserCheck, Palmtree, Edit3, X, CalendarRange, ArrowRight, Star, KeyRound
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
-import { collection, onSnapshot, doc, updateDoc, query, getDocs, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, query, getDocs, where, deleteDoc } from 'firebase/firestore';
 
 export default function Equipe({ user }) {
   const [profissionais, setProfissionais] = useState([]);
@@ -31,6 +31,28 @@ export default function Equipe({ user }) {
       await updateDoc(doc(db, "profissionais", prof.id), updateData); 
     } 
     catch (e) { alert("Erro ao atualizar."); }
+  };
+
+  const recusarCadastro = async (id) => {
+    if(window.confirm("Tem a certeza que deseja recusar e apagar permanentemente esta solicitação?")) {
+        try {
+            await deleteDoc(doc(db, "profissionais", id));
+            alert("Solicitação recusada e removida com sucesso.");
+        } catch (e) { alert("Erro ao apagar solicitação."); }
+    }
+  };
+
+  // NOVA FUNÇÃO: Reset de Senha
+  const resetarSenha = async (prof) => {
+    if (window.confirm(`Deseja forçar o reset de senha de ${prof.nome} para a senha padrão 'evoluti123'?`)) {
+        try {
+            await updateDoc(doc(db, "profissionais", prof.id), {
+                senhaProvisoria: 'evoluti123',
+                precisaTrocarSenha: true
+            });
+            alert("Senha resetada com sucesso! Peça ao profissional para acessar com 'evoluti123'.");
+        } catch (e) { alert("Erro ao resetar a senha."); }
+    }
   };
 
   const salvarEdicaoProfissional = async (e) => {
@@ -130,7 +152,6 @@ export default function Equipe({ user }) {
       setSalvando(false);
   };
 
-  // ORDENAÇÃO ALFABÉTICA (Usuário logado no topo, depois A-Z)
   const profissionaisOrdenados = [...profissionais].sort((a, b) => {
     if (a.status === 'oculto' && b.status !== 'oculto') return 1;
     if (b.status === 'oculto' && a.status !== 'oculto') return -1;
@@ -178,20 +199,29 @@ export default function Equipe({ user }) {
                 <td className="p-6 text-right">
                    {p.id !== user.id && (
                      <div className="flex items-center justify-end gap-2">
-                        {p.status === 'pendente' && <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors" title="Aprovar"><UserCheck size={18}/></button>}
+                        {p.status === 'pendente' && (
+                            <>
+                                <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors" title="Aprovar"><UserCheck size={18}/></button>
+                                <button onClick={() => recusarCadastro(p.id)} className="p-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors" title="Recusar e Apagar"><UserX size={18}/></button>
+                            </>
+                        )}
                         
-                        {p.status !== 'oculto' && (
-                            <button onClick={() => setEditandoProf({...p})} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors" title="Editar Dados"><Edit3 size={18}/></button>
+                        {p.status !== 'oculto' && p.status !== 'pendente' && (
+                            <>
+                                <button onClick={() => setEditandoProf({...p})} className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors" title="Editar Dados"><Edit3 size={18}/></button>
+                                {/* BOTÃO DE RESET DE SENHA */}
+                                <button onClick={() => resetarSenha(p)} className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors" title="Forçar Reset de Senha"><KeyRound size={18}/></button>
+                            </>
                         )}
 
                         {p.status === 'ativo' && <button onClick={() => setFeriasSetup({open: true, prof: p, dataInicio: '', dataFim: '', preview: null, msgErro: ''})} className="p-2 bg-[#e5f5ff] text-[#00A1FF] rounded-xl hover:bg-blue-100 transition-colors" title="Planejar Férias"><Palmtree size={18}/></button>}
                         {p.status === 'ferias' && <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors font-bold text-xs" title="Retornar">Regressar</button>}
                         
-                        {p.status !== 'oculto' ? (
+                        {(p.status !== 'oculto' && p.status !== 'pendente') ? (
                             <button onClick={() => {if(window.confirm("Desativar e ocultar profissional?")) alterarStatus(p, 'oculto')}} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors" title="Desativar"><UserX size={18}/></button>
-                        ) : (
+                        ) : p.status === 'oculto' ? (
                             <button onClick={() => alterarStatus(p, 'ativo')} className="p-2 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 font-bold text-xs">Reativar</button>
-                        )}
+                        ) : null}
                      </div>
                    )}
                 </td>

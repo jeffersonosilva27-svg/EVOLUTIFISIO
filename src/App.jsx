@@ -3,11 +3,11 @@ import {
   HeartPulse, LayoutDashboard, Calendar, Users, 
   DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
   CheckCircle2, ArrowRight, Lock, ChevronLeft, 
-  ListChecks, Zap, MessageSquareShare, Award, Target, Dumbbell
+  ListChecks, Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
-import { collection, onSnapshot, query, where, getDocs, addDoc, orderBy, collectionGroup } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy, collectionGroup } from 'firebase/firestore';
 
 import Agenda from './views/Agenda'; 
 import Pacientes from './views/Pacientes';
@@ -46,7 +46,6 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
-// --- MOTOR DE PUSH NOTIFICATIONS ---
 const pedirPermissaoNotificacao = async () => {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted" && Notification.permission !== "denied") {
@@ -56,27 +55,33 @@ const pedirPermissaoNotificacao = async () => {
 
 const dispararPush = (titulo, corpo) => {
   if (Notification.permission === "granted") {
-    new Notification(titulo, { body: corpo, icon: '/choquito.jpg' });
+    new Notification(titulo, { body: corpo, icon: '/favicon.svg' });
   }
 };
-// -----------------------------------
 
-const TUTORIAL_CHAPTERS = [
-  { id: 'start', title: 'Boas-vindas', color: 'bg-[#FFCC00]', textColor: 'text-[#0F214A]' },
-  { id: 'basico', title: 'Fase 1: O Básico', color: 'bg-[#00A1FF]', textColor: 'text-white' },
-  { id: 'fisio', title: 'Fase 2: Ferramentas do Fisio', color: 'bg-[#0F214A]', textColor: 'text-white' },
-  { id: 'money', title: 'Fase 3: Financeiro e Estoque', color: 'bg-green-500', textColor: 'text-white' },
-  { id: 'end', title: 'Tudo Pronto!', color: 'bg-[#00A1FF]', textColor: 'text-white' }
+// --- NOVOS TUTORIAIS DIRECIONADOS (Mascote: Evo) ---
+const TUTORIAL_STEPS_FISIO = [
+  { titulo: "Bem-vindo ao Evoluti!", texto: "Sou o Evo, seu assistente inteligente. Vou guiá-lo pelas ferramentas clínicas.", view: 'dashboard' },
+  { titulo: "Sua Fila Pessoal (7 Dias)", texto: "No seu painel Início, veja os próximos pacientes para os próximos 7 dias. Arraste para o lado ou use as setas para navegar.", view: 'dashboard' },
+  { titulo: "Atendimento em Um Clique", texto: "No horário exato da sessão, o botão no card muda para 'Iniciar Atendimento'. Ao clicar, a presença é confirmada e o valor entra no caixa!", view: 'dashboard' },
+  { titulo: "Agenda Inteligente", texto: "Gerencie horários e visualize a conduta planejada de cada paciente antes mesmo da consulta começar.", view: 'agenda' },
+  { titulo: "Prontuários e Planos", texto: "Na aba Pacientes, escreva evoluções SOAP, monte planos com exercícios do banco global e use a IA para laudar exames.", view: 'pacientes' },
+  { titulo: "Escalas Clínicas", texto: "Aplique questionários validados e acompanhe a pontuação do paciente ao longo do tempo.", view: 'avaliacoes' }
 ];
 
-const TUTORIAL_STEPS = [
-  { chapterId: 'start', titulo: "Olá! Eu sou o Choquito ⚡", texto: "Bem-vindo ao Evoluti Fisio! Seu novo braço direito na gestão clínica.", view: 'dashboard', botao: "Começar Tour Guiado" },
-  { chapterId: 'basico', titulo: "O Painel Inicial", texto: "Aqui no Início, você tem uma visão rápida do seu próximo paciente e das evoluções pendentes.", view: 'dashboard', botao: "Entendi" },
-  { chapterId: 'basico', titulo: "A Agenda Inteligente", texto: "Nesta aba, você agenda sessões simples ou em lotes com proteção de janela dupla.", view: 'agenda', botao: "Ir para Clínico" },
-  { chapterId: 'fisio', titulo: "Prontuário (SOAP)", texto: "A aba Pacientes é o coração do atendimento. Clique em um paciente para abrir o prontuário e monitorar a dor (EVA).", view: 'pacientes', botao: "Ver Planos" },
-  { chapterId: 'fisio', titulo: "Prescrição de Exercícios", texto: "Ainda na ficha do paciente, tem o 'Plano de Tratamento' com exercícios e TMI.", view: 'pacientes', botao: "Conhecer o Caixa" },
-  { chapterId: 'money', titulo: "Caixa e Estoque", texto: "Na guia de Caixa & Estoque você fatura as sessões e controla os materiais em abas separadas!", view: 'financeiro', botao: "Finalizar Tour" },
-  { chapterId: 'end', titulo: "É Tudo Seu! 🚀", texto: "O sistema está pronto para receber toda a sua energia.", view: 'dashboard', botao: "Começar a Usar Agora" }
+const TUTORIAL_STEPS_RECEP = [
+  { titulo: "Bem-vinda ao Evoluti!", texto: "Olá! Sou o Evo. Vou ajudar você a dominar o comando da recepção e faturamento.", view: 'dashboard' },
+  { titulo: "Seu Comando Central", texto: "O painel da recepção possui atalhos para lançamentos. Acompanhe todos os pacientes que vão chegar hoje na clínica em tempo real.", view: 'dashboard' },
+  { titulo: "Agenda sem Conflitos", texto: "Marque sessões únicas ou pacotes (lotes). O sistema protege contra choque de salas e profissionais.", view: 'agenda' },
+  { titulo: "Gestão Financeira e Pacientes", texto: "Na aba Pacientes, gere os PDFs de cobrança e lance os insumos consumidos nas sessões.", view: 'pacientes' },
+  { titulo: "Caixa e Estoque", texto: "Controle o faturamento consolidado, crie novos produtos e monitore as baixas de estoque.", view: 'financeiro' }
+];
+
+const TUTORIAL_STEPS_GESTOR = [
+  { titulo: "Olá, Gestor!", texto: "Sou o Evo. O seu painel concentra as métricas essenciais e o fluxo de toda a clínica.", view: 'dashboard' },
+  { titulo: "Faltas Críticas", texto: "No seu Início, clique no painel vermelho de Faltas Críticas para monitorar cancelamentos de última hora e justificar cobranças.", view: 'dashboard' },
+  { titulo: "Aba Diário", texto: "Criamos a aba 'Diário' para você acompanhar exatamente a mesma tela operacional que a Recepção utiliza no dia a dia.", view: 'diario' },
+  { titulo: "Controle da Equipe", texto: "Aprove usuários, force o reset de senhas e organize férias com a redistribuição automática da agenda.", view: 'equipe' }
 ];
 
 function MainApp() {
@@ -114,15 +119,36 @@ function MainApp() {
 
   const [isModalActive, setIsModalActive] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(-1);
+  const [showFaltasModal, setShowFaltasModal] = useState(false);
+
+  // Estados Carrossel
+  const [carouselIdx, setCarouselIdx] = useState(0);
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
 
   const isFirstLoad = useRef(true);
 
   const navegarPara = (view, params = null) => { setNavParams(params); setCurrentView(view); };
+  
   const iniciarTutorial = () => { setTutorialStep(0); setCurrentView('dashboard'); };
+  
+  const getTutorialSteps = (role) => {
+      if (role === 'recepcao' || role === 'admin_fin') return TUTORIAL_STEPS_RECEP;
+      if (role === 'gestor_clinico') return TUTORIAL_STEPS_GESTOR;
+      return TUTORIAL_STEPS_FISIO;
+  };
+  
   const avancarTutorial = () => {
+    const steps = getTutorialSteps(user?.role);
     const nextStep = tutorialStep + 1;
-    if (nextStep < TUTORIAL_STEPS.length) { setTutorialStep(nextStep); setCurrentView(TUTORIAL_STEPS[nextStep].view); } 
-    else { setTutorialStep(-1); localStorage.setItem('evoluti_tutorial_visto', 'sim'); setCurrentView('dashboard'); }
+    if (nextStep < steps.length) { 
+        setTutorialStep(nextStep); 
+        setCurrentView(steps[nextStep].view); 
+    } else { 
+        setTutorialStep(-1); 
+        localStorage.setItem('evoluti_tutorial_visto', 'sim'); 
+        setCurrentView('dashboard'); 
+    }
   };
 
   const realizarLogin = async (e) => {
@@ -164,7 +190,7 @@ function MainApp() {
         nome: cadNome, categoriaBase: cadProfissao, registro: cadRegistro, email: cadEmail,
         senhaProvisoria: cadSenha, precisaTrocarSenha: true, status: 'pendente', role: 'pendente', dataCadastro: new Date().toISOString()
       });
-      alert("Sucesso! Seu pedido de acesso foi enviado ao Gestor Clínico.");
+      alert("Sucesso! O seu pedido de acesso foi enviado ao Gestor Clínico.");
       setAuthMode('login');
       setCadNome(''); setCadProfissao(''); setCadRegistro(''); setCadEmail(''); setCadSenha('');
     } catch (error) { alert("Erro ao enviar pedido."); }
@@ -213,6 +239,8 @@ function MainApp() {
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
+    // Apenas Gestor vê a aba Diário no menu lateral
+    { id: 'diario', icon: ClipboardList, label: 'Diário (Recepção)', roles: ['gestor_clinico'] },
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Award, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
@@ -220,27 +248,132 @@ function MainApp() {
     { id: 'equipe', icon: ShieldCheck, label: 'Equipe', roles: ['gestor_clinico'] },
   ];
 
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
+
+  // RENDERIZAR PAINEL RECEPÇÃO / DIÁRIO
+  const renderRecepcaoDashboard = () => {
+    const hojeIso = obterDataLocalISO(new Date());
+    const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
+    const primeiroNome = (user?.name || user?.nome || 'Equipe').split(' ')[0];
+
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+         <div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                {currentView === 'diario' ? 'Diário Operacional' : 'Painel da Recepção'}
+            </h1>
+            <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo e ações rápidas do dia.</p>
+         </div>
+         
+         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <button onClick={() => navegarPara('financeiro')} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-3 hover:border-[#00A1FF] hover:shadow-md transition-all group">
+                <Package className="text-[#00A1FF] group-hover:scale-110 transition-transform" size={28}/>
+                <span className="text-xs font-black text-slate-700">Gerir Estoque</span>
+            </button>
+            <button onClick={() => navegarPara('financeiro')} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-3 hover:border-green-500 hover:shadow-md transition-all group">
+                <Plus className="text-green-500 group-hover:scale-110 transition-transform" size={28}/>
+                <span className="text-xs font-black text-slate-700">Criar Insumo</span>
+            </button>
+            <button onClick={() => navegarPara('pacientes')} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-3 hover:border-orange-500 hover:shadow-md transition-all group">
+                <ShoppingCart className="text-orange-500 group-hover:scale-110 transition-transform" size={28}/>
+                <span className="text-xs font-black text-slate-700">Lançar no Paciente</span>
+            </button>
+            <button onClick={() => navegarPara('agenda')} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-3 hover:border-purple-500 hover:shadow-md transition-all group">
+                <Calendar className="text-purple-500 group-hover:scale-110 transition-transform" size={28}/>
+                <span className="text-xs font-black text-slate-700">Ver Calendário</span>
+            </button>
+         </div>
+
+         <div className="bg-white border border-slate-200 rounded-[32px] p-6 md:p-8 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Users className="text-[#00A1FF]"/> Todos os Atendimentos Hoje</h3>
+                <div className="bg-blue-50 text-blue-700 font-black text-xs px-3 py-1 rounded-lg border border-blue-100">{agendaGeralHoje.length} consultas</div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {agendaGeralHoje.map(ag => (
+                    <div key={ag.id} className="bg-slate-50 p-5 rounded-[24px] border border-slate-100 hover:border-blue-200 transition-all flex flex-col justify-between">
+                        <div>
+                           <div className="flex justify-between items-start mb-2">
+                              <span className={`text-xs font-black px-2 py-1 rounded-lg ${ag.status === 'confirmado' || ag.status === 'realizado' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{ag.hora}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">{ag.local}</span>
+                           </div>
+                           <h4 className="font-black text-[#0F214A] text-lg leading-tight mb-1 truncate">{ag.paciente}</h4>
+                           <p className="text-xs font-bold text-slate-500 flex items-center gap-1"><Award size={12}/> {ag.profissional}</p>
+                        </div>
+                        <button onClick={() => navegarPara('pacientes', {pacienteId: ag.pacienteId})} className="mt-4 w-full bg-white border border-slate-200 hover:border-[#00A1FF] text-[#00A1FF] transition-colors py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm">
+                            <ShoppingCart size={14}/> Ficha e Cobrança
+                        </button>
+                    </div>
+                ))}
+                {agendaGeralHoje.length === 0 && <div className="col-span-full p-10 text-center text-slate-400 font-bold bg-white rounded-3xl border border-dashed border-slate-200">Nenhum atendimento marcado para hoje.</div>}
+            </div>
+         </div>
+      </div>
+    );
+  };
+  
+  // RENDERIZAR PAINEL CLÍNICO / GESTOR
   const renderDashboard = () => {
+    // Se a view atual for o Diário (apenas gestor pode clicar), renderiza a visão da recepção
+    if (currentView === 'diario') return renderRecepcaoDashboard();
+    
+    // Se for receção, renderiza a visão da recepção diretamente no dashboard
+    if (user?.role === 'recepcao' || user?.role === 'admin_fin') return renderRecepcaoDashboard();
+
     const hojeIso = obterDataLocalISO(new Date());
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     const agendaGeralHoje = agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').sort((a, b) => getMinutos(a.hora) - getMinutos(b.hora));
     
-    // Filtros Clínicos
+    // --- LÓGICA DE FILA PESSOAL (7 DIAS CORRIDOS) ---
+    const seteDias = new Date();
+    seteDias.setDate(seteDias.getDate() + 7);
+    const seteDiasIso = obterDataLocalISO(seteDias);
+
+    const agendaGeral7Dias = agendamentosGlobais.filter(a => a.data >= hojeIso && a.data <= seteDiasIso && a.status !== 'cancelado').sort((a, b) => {
+        if (a.data !== b.data) return a.data.localeCompare(b.data);
+        return getMinutos(a.hora) - getMinutos(b.hora);
+    });
+
     const minhaAgendaHoje = agendaGeralHoje.filter(a => a.profissionalId === user.id);
-    const proximosPendentesMeus = minhaAgendaHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado');
-    const proximoAtendimento = proximosPendentesMeus.length > 0 ? proximosPendentesMeus[0] : null;
-    const proximoEstaAtrasado = proximoAtendimento ? getMinutos(proximoAtendimento.hora) < minutosAtuais : false;
+    const minhaAgenda7Dias = agendaGeral7Dias.filter(a => a.profissionalId === user.id);
+    
+    const proximosPendentesMeus = minhaAgenda7Dias.filter(a => {
+        if (a.status && a.status !== 'pendente' && a.status !== 'confirmado') return false;
+        if (a.data === hojeIso && getMinutos(a.hora) < minutosAtuais - 30) return false; 
+        return true;
+    });
+    
+    if (carouselIdx >= proximosPendentesMeus.length && proximosPendentesMeus.length > 0) setCarouselIdx(0);
+    const proximoAtendimento = proximosPendentesMeus[carouselIdx] || proximosPendentesMeus[0] || null;
+    
+    const onTouchEndHandler = () => {
+      if (!touchStart || !touchEnd) return;
+      const distance = touchStart - touchEnd;
+      const minSwipeDistance = 50;
+      if (distance > minSwipeDistance && carouselIdx < proximosPendentesMeus.length - 1) setCarouselIdx(carouselIdx + 1);
+      if (distance < -minSwipeDistance && carouselIdx > 0) setCarouselIdx(carouselIdx - 1);
+    };
+
+    const isHoje = proximoAtendimento?.data === hojeIso;
+    const isHoraDaConsulta = proximoAtendimento ? (isHoje && getMinutos(proximoAtendimento.hora) <= minutosAtuais) || proximoAtendimento.data < hojeIso : false;
+    
     const minhasRealizadas = minhaAgendaHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const minhasAtrasadas = minhaAgendaHoje.filter(a => (!a.status || a.status === 'pendente') && getMinutos(a.hora) < minutosAtuais).length;
     
-    // Filtros Administrativos/Gestão
+    // Gestão
     const geralRealizadas = agendaGeralHoje.filter(a => a.status === 'realizado' || a.status === 'confirmado').length;
     const geralPendentes = agendaGeralHoje.filter(a => !a.status || a.status === 'pendente').length;
     
-    // Regras de Visibilidade
-    const isClinico = ['fisio', 'to', 'gestor_clinico'].includes(user?.role);
-    const isAdminOrRecepcao = ['recepcao', 'admin_fin', 'gestor_clinico'].includes(user?.role);
-    
+    const mesAtual = hojeIso.substring(0, 7);
+    const agendaMes = agendamentosGlobais.filter(a => a.data && a.data.startsWith(mesAtual));
+    const totalMes = agendaMes.length;
+    const faltasCriticasMes = agendaMes.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
+    const taxaCritica = totalMes > 0 ? ((faltasCriticasMes.length / totalMes) * 100).toFixed(1) : 0;
+
     const exerciciosDaSessao = proximoAtendimento?.exerciciosPlanejados || [];
     const planoProximoPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
     const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoProximoPaciente;
@@ -252,114 +385,161 @@ function MainApp() {
         <div className="space-y-8 animate-in fade-in duration-500">
             <div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-                 {user?.role === 'recepcao' ? 'Painel da Recepção' : user?.role === 'admin_fin' ? 'Painel Financeiro' : 'Painel Clínico'}
+                 {user?.role === 'gestor_clinico' ? 'Painel de Gestão' : 'Painel Clínico'}
               </h1>
               <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das atividades de hoje.</p>
             </div>
 
-            {/* SEÇÃO DOS CLÍNICOS (FISIO / TO) - APARECE PRIMEIRO */}
-            {isClinico && (
-                <div className="space-y-6">
-                    {isAdminOrRecepcao && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas</h3>}
-                    
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                        <div className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]">
-                            <div className="relative z-10">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] flex items-center gap-2 mb-4"><Clock size={14}/> Seu Próximo Paciente</p>
-                                {proximoAtendimento ? (
-                                    <>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <h2 className="text-4xl md:text-5xl font-black">{proximoAtendimento.paciente}</h2>
-                                            {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest">Presença Confirmada</span>}
-                                        </div>
-                                        <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                            <span className={`px-3 py-1 rounded-xl font-black text-sm ${proximoEstaAtrasado ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>{proximoAtendimento.hora} {proximoEstaAtrasado && '(Atrasado)'}</span>
-                                            <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
-                                        </p>
-                                        
-                                        {listaExibicao.length > 0 && (
-                                            <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
-                                                <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
-                                                    {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada (Modulação)</> : <><Dumbbell size={14}/> Exercícios do Plano Geral</>}
-                                                </p>
-                                                <div className="space-y-2">
-                                                    {listaExibicao.map((ex, i) => (
-                                                        <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
-                                                            <span className="font-bold text-white tracking-wide">{ex.nome}</span>
-                                                            <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-4 shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
-                                                                {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
+            <div className="space-y-6">
+                {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas Pessoais</h3>}
+                
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    {/* CARROSSEL NO CARD DE PRÓXIMO PACIENTE (Até 7 dias) */}
+                    <div 
+                        className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]"
+                        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEndHandler}
+                    >
+                        {proximosPendentesMeus.length > 1 && (
+                            <>
+                              {carouselIdx > 0 && <button onClick={() => setCarouselIdx(c => c-1)} className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronLeft className="text-white"/></button>}
+                              {carouselIdx < proximosPendentesMeus.length - 1 && <button onClick={() => setCarouselIdx(c => c+1)} className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronRight className="text-white"/></button>}
+                            </>
+                        )}
+                        
+                        <div className="relative z-10 px-0 md:px-8">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal {proximosPendentesMeus.length > 1 && `(${carouselIdx + 1} de ${proximosPendentesMeus.length})`}</p>
+                            {proximoAtendimento ? (
+                                <>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <h2 className="text-4xl md:text-5xl font-black truncate">{proximoAtendimento.paciente}</h2>
+                                        {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Confirmado</span>}
+                                    </div>
+                                    <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
+                                        <span className={`px-3 py-1 rounded-xl font-black text-sm ${isHoraDaConsulta ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>
+                                            {!isHoje && <span className="mr-1 text-xs opacity-80">{new Date(proximoAtendimento.data).toLocaleDateString('pt-BR')} -</span>}
+                                            {proximoAtendimento.hora} {isHoraDaConsulta && '(Chegou a hora)'}
+                                        </span>
+                                        <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
+                                    </p>
+                                    
+                                    {listaExibicao.length > 0 && (
+                                        <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
+                                            <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
+                                                {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada</> : <><Dumbbell size={14}/> Plano Geral</>}
+                                            </p>
+                                            <div className="space-y-2">
+                                                {listaExibicao.map((ex, i) => (
+                                                    <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
+                                                        <span className="font-bold text-white tracking-wide truncate pr-2">{ex.nome}</span>
+                                                        <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-auto shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
+                                                            {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
+                                                        </span>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div><h2 className="text-3xl font-black mb-2 text-slate-400">Nenhum paciente na fila.</h2><p className="text-slate-500 font-medium">Você concluiu todos os seus atendimentos de hoje!</p></div>
-                                )}
-                            </div>
-                            {proximoAtendimento && (
-                                <div className="relative z-10 mt-8 flex flex-wrap gap-3">
-                                    <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="bg-[#FFCC00] text-[#0F214A] px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-yellow-400 transition-all flex items-center gap-2 shadow-[0_4px_20px_rgba(255,204,0,0.3)] w-fit">Iniciar Prontuário <ArrowRight size={16}/></button>
-                                </div>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div><h2 className="text-3xl font-black mb-2 text-slate-400">Fila Limpa!</h2><p className="text-slate-500 font-medium">Você concluiu os seus atendimentos nos próximos dias.</p></div>
                             )}
-                            <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
                         </div>
-                        <div className="flex flex-col gap-6">
-                            <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-slate-200">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14}/> Suas Sessões Hoje</p>
-                                <h3 className="text-4xl font-black text-[#0F214A]">{minhaAgendaHoje.length}</h3>
-                                <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
-                                <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                        
+                        {proximoAtendimento && (
+                            <div className="relative z-10 mt-8 flex flex-wrap gap-3 px-0 md:px-8">
+                                <button onClick={async () => {
+                                    if (isHoraDaConsulta && proximoAtendimento.status !== 'confirmado' && proximoAtendimento.status !== 'realizado') {
+                                        await updateDoc(doc(db, "agendamentos", proximoAtendimento.id), { status: 'confirmado' });
+                                    }
+                                    navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id });
+                                }} className={`${isHoraDaConsulta ? 'bg-[#FFCC00] text-[#0F214A] hover:bg-yellow-400 shadow-[0_4px_20px_rgba(255,204,0,0.3)]' : 'bg-white text-[#0F214A] hover:bg-slate-200 shadow-lg'} px-8 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center gap-2 w-fit`}>
+                                    {isHoraDaConsulta ? 'Iniciar Atendimento' : 'Preparar Ficha'} <ArrowRight size={16}/>
+                                </button>
                             </div>
-                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-200">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Suas Evoluções Pendentes</p>
-                                <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
-                                <p className="text-xs font-bold text-blue-600/70 mt-2">Sessões atrasadas sem assinatura</p>
+                        )}
+                        
+                        {proximosPendentesMeus.length > 1 && (
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 md:hidden z-20">
+                                {proximosPendentesMeus.map((_, i) => (
+                                    <div key={i} className={`h-1.5 rounded-full transition-all ${i === carouselIdx ? 'w-4 bg-[#FFCC00]' : 'w-1.5 bg-white/30'}`} />
+                                ))}
                             </div>
+                        )}
+                        
+                        <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
+                    </div>
+                    
+                    <div className="flex flex-col gap-6">
+                        <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-[#00A1FF] cursor-pointer group">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14} className="group-hover:text-[#00A1FF] transition-colors"/> Suas Sessões Hoje</p>
+                            <h3 className="text-4xl font-black text-[#0F214A] group-hover:text-[#00A1FF] transition-colors">{minhaAgendaHoje.length}</h3>
+                            <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
+                            <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                        </div>
+                        <div onClick={() => navegarPara('pacientes')} className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-300 cursor-pointer group">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
+                            <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
+                            <p className="text-xs font-bold text-blue-600/70 mt-2 group-hover:text-blue-800 transition-colors">Sessões atrasadas sem assinatura</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {user?.role === 'gestor_clinico' && (
+                <div className="pt-8 border-t border-slate-200 space-y-6">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral (Gestão)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div onClick={() => navegarPara('agenda')} className="cursor-pointer bg-slate-900 text-white rounded-[24px] p-6 shadow-md hover:shadow-lg transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
+                        <div onClick={() => navegarPara('agenda')} className="cursor-pointer bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-[#00A1FF] transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando na Clínica</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
+                        <div onClick={() => navegarPara('financeiro')} className="cursor-pointer bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-500 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Receitas Realizadas</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
+                        
+                        <div onClick={() => setShowFaltasModal(true)} className="cursor-pointer bg-red-50 border border-red-200 rounded-[24px] p-6 shadow-sm hover:border-red-400 transition-all group">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-1 flex items-center justify-between">Faltas Críticas (Mês) <AlertTriangle size={14} className="group-hover:animate-bounce"/></p>
+                            <h3 className="text-3xl font-black text-red-600">{taxaCritica}%</h3>
+                            <p className="text-[9px] font-bold text-red-400 mt-1 uppercase">{faltasCriticasMes.length} ausências sem isenção</p>
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* SEÇÃO DA RECEPÇÃO / ADMINISTRAÇÃO - VEM LOGO ABAIXO */}
-            {isAdminOrRecepcao && (
-                <div className={isClinico ? "pt-8 border-t border-slate-200 space-y-6" : "space-y-6"}>
-                    {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral da Clínica</h3>}
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-slate-900 text-white rounded-[24px] p-6 shadow-md hover:shadow-lg transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
-                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-blue-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
-                        <div className="bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-200 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Finalizados (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
-                    </div>
-
-                    {(user?.role === 'recepcao' || user?.role === 'gestor_clinico') && (
-                        <div className="mt-6 bg-white border border-slate-200 rounded-[32px] p-6 md:p-8 shadow-sm">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2"><Clock size={14}/> Fila de Chegada (Próximos Atendimentos)</p>
-                            <div className="space-y-3">
-                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').slice(0, 5).map(ag => (
-                                    <div key={ag.id} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl border border-transparent hover:border-slate-100 transition-all">
-                                        <div>
-                                            <div className="font-black text-slate-800 text-sm flex items-center gap-2">{ag.paciente} {ag.status === 'confirmado' && <span className="bg-blue-50 text-[#00A1FF] border border-blue-100 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Confirmado</span>}</div>
-                                            <div className="text-[10px] font-bold text-slate-500 uppercase mt-0.5">{ag.profissional} • {ag.local}</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="bg-[#00A1FF] text-white px-3 py-1 rounded-lg text-xs font-black shadow-md">{ag.hora}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                                {agendaGeralHoje.filter(a => !a.status || a.status === 'pendente' || a.status === 'confirmado').length === 0 && (
-                                    <div className="p-4 text-center rounded-xl bg-slate-50 border-2 border-dashed border-slate-200"><p className="text-sm font-bold text-slate-400">Nenhum atendimento pendente para hoje na clínica.</p></div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+            
+            {showFaltasModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+                   <div className="bg-white p-8 rounded-[32px] w-full max-w-2xl shadow-2xl relative max-h-[80vh] flex flex-col animate-in zoom-in-95">
+                       <div className="flex justify-between items-center mb-6 shrink-0 border-b pb-4">
+                          <div>
+                              <h3 className="font-black text-xl text-red-600 flex items-center gap-2"><AlertTriangle size={24}/> Detalhamento de Faltas</h3>
+                              <p className="text-slate-500 font-bold text-xs mt-1">Ausências não isentas no mês atual.</p>
+                          </div>
+                          <button onClick={() => setShowFaltasModal(false)} className="text-slate-400 hover:bg-slate-100 p-2 rounded-full"><X/></button>
+                       </div>
+                       <div className="overflow-y-auto custom-scrollbar flex-1 pr-2">
+                           {faltasCriticasMes.length > 0 ? (
+                               <div className="space-y-3">
+                                   {faltasCriticasMes.map((f, i) => (
+                                       <div key={i} className="flex justify-between items-center bg-red-50 p-4 rounded-xl border border-red-100">
+                                           <div>
+                                               <h4 className="font-black text-slate-800 text-sm">{f.paciente}</h4>
+                                               <p className="text-xs font-bold text-slate-500 mt-1">{new Date(f.data).toLocaleDateString('pt-BR')} • {f.profissional}</p>
+                                           </div>
+                                           <div className="text-right">
+                                               <span className="bg-red-200 text-red-800 px-3 py-1 rounded-lg text-[10px] font-black uppercase block">{f.motivoCancelamento}</span>
+                                           </div>
+                                       </div>
+                                   ))}
+                               </div>
+                           ) : (
+                               <div className="text-center py-10 font-bold text-slate-400">Nenhuma falta crítica registada neste mês! 🎉</div>
+                           )}
+                       </div>
+                   </div>
                 </div>
             )}
         </div>
     );
   };
+
+  const steps = getTutorialSteps(user?.role);
+  const currentStep = tutorialStep >= 0 && tutorialStep < steps.length ? steps[tutorialStep] : null;
 
   if (!user) {
     return (
@@ -368,9 +548,9 @@ function MainApp() {
            <div className="relative z-10 max-w-lg">
               <div className="flex items-center gap-3 mb-8"><HeartPulse size={48} className="text-[#00A1FF]" /><span className="text-3xl font-black tracking-tight">EVOLUTI</span></div>
               <h1 className="text-5xl font-black leading-tight mb-6">Gestão Clínica Inteligente.</h1>
-              <p className="text-lg text-blue-200 font-medium leading-relaxed">Organize sua agenda, escreva evoluções guiadas por IA e controle o fluxo de caixa com a energia do Choquito ⚡!</p>
+              <p className="text-lg text-blue-200 font-medium leading-relaxed">Organize sua agenda, escreva evoluções guiadas por IA e controle o fluxo de caixa com a energia do Evo!</p>
            </div>
-           <div className="absolute top-1/4 right-10 w-48 h-48 opacity-90 hover:opacity-100 hover:scale-105 transition-all duration-500 z-20"><img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain rounded-full shadow-[0_0_40px_rgba(0,161,255,0.4)] border-4 border-[#00A1FF]" /></div>
+           <div className="absolute top-1/4 right-10 w-48 h-48 opacity-90 hover:opacity-100 hover:scale-105 transition-all duration-500 z-20 flex items-center justify-center bg-[#00A1FF] rounded-full shadow-[0_0_40px_rgba(0,161,255,0.4)] border-4 border-white"><Bot size={80} className="text-white"/></div>
            <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-[#00A1FF] rounded-full blur-[150px] opacity-20"></div>
            <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#FFCC00] rounded-full blur-[200px] opacity-10"></div>
         </div>
@@ -411,23 +591,27 @@ function MainApp() {
     );
   }
 
-  const currentTutorialStep = tutorialStep >= 0 ? TUTORIAL_STEPS[tutorialStep] : null;
-  const currentChapter = currentTutorialStep ? TUTORIAL_CHAPTERS.find(c => c.id === currentTutorialStep.chapterId) : null;
-
   return (
     <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
-      {tutorialStep >= 0 && currentTutorialStep && currentChapter && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
-          <div className="bg-white max-w-sm w-full rounded-[32px] p-8 shadow-2xl relative mt-16 animate-in zoom-in-95 duration-300">
-             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-32 h-32 flex items-center justify-center animate-bounce z-50"><img src="/choquito.jpg" alt="Choquito" className="w-full h-full object-contain drop-shadow-xl rounded-full border-4 border-white" /></div>
-             <div className="mt-12 text-center">
-                <div className="flex items-center justify-center gap-2 mb-4 bg-slate-50 p-2 rounded-full border border-slate-100 shadow-inner w-fit mx-auto"><div className={`p-2 rounded-full ${currentChapter.color} ${currentChapter.textColor}`}><ListChecks size={14}/></div><span className="text-[10px] font-black uppercase tracking-widest text-slate-700 px-2">{currentChapter.title}</span></div>
-                <h3 className="text-2xl font-black text-[#0F214A] mb-4 leading-tight">{currentTutorialStep.titulo}</h3><p className="text-slate-600 font-medium leading-relaxed text-sm mb-8">{currentTutorialStep.texto}</p>
-                <div className="flex gap-3 pt-2 border-t border-slate-100">{tutorialStep > 0 && <button onClick={() => setTutorialStep(-1)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl transition-colors text-sm">Sair</button>}<button onClick={avancarTutorial} className={`flex-[2] ${currentChapter.color} ${currentChapter.textColor} py-3 rounded-xl font-black hover:scale-105 transition-all shadow-lg text-sm`}>{currentTutorialStep.botao}</button></div>
+      
+      {/* NOVO TUTORIAL FLUTUANTE (Evo) */}
+      {currentStep && (
+          <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 w-[90%] md:w-80 bg-white rounded-[24px] shadow-[0_10px_40px_rgba(0,0,0,0.2)] border border-blue-100 z-[200] animate-in slide-in-from-bottom-10 p-5">
+             <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
+                <div className="bg-[#00A1FF] p-2.5 rounded-full text-white shadow-md"><Bot size={24}/></div>
+                <div>
+                   <h4 className="font-black text-[#0F214A] text-sm leading-tight">{currentStep.titulo}</h4>
+                   <p className="text-[9px] font-bold text-[#00A1FF] uppercase tracking-widest mt-1">Passo {tutorialStep + 1} de {steps.length}</p>
+                </div>
+             </div>
+             <p className="text-sm font-medium text-slate-600 mb-6 leading-relaxed">{currentStep.texto}</p>
+             <div className="flex justify-between items-center pt-2">
+                <button onClick={() => setTutorialStep(-1)} className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">Pular Tutorial</button>
+                <button onClick={avancarTutorial} className="bg-[#0F214A] text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-md hover:bg-[#00A1FF] transition-colors">{tutorialStep === steps.length - 1 ? 'Concluir 🎉' : 'Próximo'}</button>
              </div>
           </div>
-        </div>
       )}
+
       <aside onMouseEnter={() => setIsSidebarOpen(true)} onMouseLeave={() => setIsSidebarOpen(false)} className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'} print:hidden`}>
         <div className="p-6 flex justify-center text-[#00A1FF] shrink-0"><HeartPulse size={32} className="animate-pulse" /></div>
         <nav className="flex-1 px-2 space-y-4 mt-4 overflow-y-auto custom-scrollbar">
@@ -459,7 +643,7 @@ function MainApp() {
         </header>
         <div className="p-4 md:p-8 h-full print:p-0">
            <div className="max-w-[1600px] mx-auto">
-              {currentView === 'dashboard' && renderDashboard()}
+              {currentView === 'dashboard' || currentView === 'diario' ? renderDashboard() : null}
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} setModalActive={setIsModalActive} />}
               {currentView === 'pacientes' && <Pacientes pacientes={pacientes} hasAccess={hasAccess} user={user} navParams={navParams} setModalActive={setIsModalActive} />}
               {currentView === 'avaliacoes' && <Avaliacoes hasAccess={hasAccess} />}

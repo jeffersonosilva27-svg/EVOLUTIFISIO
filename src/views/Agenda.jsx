@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight,
-  Layers, Loader2, Copy, User, MapPin, Sparkles, FileText, AlertTriangle, Ban, CheckCircle2, Lightbulb
+  Layers, Loader2, Copy, User, MapPin, Sparkles, FileText, AlertTriangle, Ban, CheckCircle2, Lightbulb, Dumbbell
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -32,6 +32,7 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
   const [mostrarForm, setMostrarForm] = useState(false);
   const [agendamentoEditando, setAgendamentoEditando] = useState(null);
   const [modoCancelamento, setModoCancelamento] = useState(false);
+  const [mostrandoConduta, setMostrandoConduta] = useState(false);
   const [carregandoIA, setCarregandoIA] = useState(false);
   
   const [form, setForm] = useState({ 
@@ -51,7 +52,7 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     const unsubAgenda = onSnapshot(collection(db, "agendamentos"), snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubPac = onSnapshot(collection(db, "pacientes"), snap => setPacientes(snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || 'Sem nome' }))));
     const unsubProf = onSnapshot(collection(db, "profissionais"), snap => {
-      setProfissionais(snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || '', categoriaBase: d.data()?.categoriaBase || '' })).filter(p => p.nome));
+      setProfissionais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.nome && p.categoriaBase !== 'recepcao' && p.role !== 'recepcao'));
     });
     return () => { unsubAgenda(); unsubPac(); unsubProf(); };
   }, [user]);
@@ -67,7 +68,13 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     setMostrarForm(true);
   };
 
-  const fecharFormularioGeral = () => { setMostrarForm(false); setModoCancelamento(false); setAgendamentoEditando(null); setIsLote(false); };
+  const fecharFormularioGeral = () => { 
+      setMostrarForm(false); 
+      setModoCancelamento(false); 
+      setMostrandoConduta(false);
+      setAgendamentoEditando(null); 
+      setIsLote(false); 
+  };
 
   const toggleDiaSemana = (dia) => {
     setLoteConfig(prev => ({
@@ -124,6 +131,13 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     setCarregandoIA(false);
   };
 
+  const aplicarExclusaoErro = async () => {
+    if(window.confirm("Remover este erro de agendamento permanentemente?")) {
+        await deleteDoc(doc(db, "agendamentos", agendamentoEditando)); 
+        fecharFormularioGeral();
+    }
+  };
+
   const pacientesOrdenados = [...pacientes].sort((a, b) => a.nome.localeCompare(b.nome));
   const profissionaisOrdenados = [...profissionais].sort((a, b) => {
       if (a.id === user?.id) return -1;
@@ -134,10 +148,11 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
   const dias = (() => { const dArr = []; const inicio = new Date(dataSelecionada); inicio.setDate(inicio.getDate() - inicio.getDay()); for (let i = 0; i < 7; i++) { dArr.push(new Date(inicio)); inicio.setDate(inicio.getDate() + 1); } return dArr; })();
   const hoje = obterDataLocalISO(new Date());
 
+  const agendamentoAtivo = agendamentos.find(a => a.id === agendamentoEditando);
+
   if (!user) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-[#00A1FF]" size={40}/></div>;
 
   return (
-    // 🔪 CIRURGIA 1: Trocado 100vh para 100dvh no mobile para respeitar a barra de endereço real do smartphone.
     <div className="flex flex-col space-y-4 animate-in fade-in relative h-[calc(100dvh-170px)] md:h-[calc(100vh-140px)]">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200 shadow-sm shrink-0">
         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Agenda Clínica</h2>
@@ -150,7 +165,6 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-h-0 overflow-hidden">
-        {/* 🔪 CIRURGIA 2: A classe "touch-pan-x" foi REMOVIDA. Era ela que bloqueava o seu scroll vertical no telemóvel. */}
         <div className="overflow-auto flex-1 w-full custom-scrollbar">
           <table className="w-full border-collapse min-w-[850px]">
             <thead className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md shadow-sm">
@@ -178,16 +192,36 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                     const ags = agendamentos.filter(a => a.data === iso && a.profissionalId === prof.id).sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
                     return (
                       <td key={iso} className="p-1.5 border-b border-r border-slate-100 align-top min-h-[100px]">
-                        {ags.map(ag => (
-                          <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all shadow-sm flex flex-col justify-between min-h-[60px] animate-in fade-in zoom-in-95 ${ag.status === 'cancelado' ? 'bg-red-50 border-red-100 opacity-60' : ag.status === 'realizado' ? 'bg-green-50 border-green-200' : 'bg-white border-blue-100 hover:border-[#00A1FF] hover:shadow-md'}`}>
-                              <div className="flex justify-between items-start">
-                                 <span className="text-[10px] font-black text-slate-700">{ag.hora}</span>
-                                 {ag.exerciciosPlanejados?.length > 0 && <Lightbulb size={12} className="text-amber-500 fill-amber-400/30 shrink-0" />}
-                              </div>
-                              <div className="font-black text-[10px] truncate uppercase text-[#0F214A]">{ag.paciente}</div>
-                              <div className="text-[7px] font-black text-slate-400 uppercase truncate"><MapPin size={8} className="inline mr-0.5"/> {ag.local}</div>
-                          </div>
-                        ))}
+                        {ags.map(ag => {
+                          const isCancelado = ag.status === 'cancelado';
+                          const isRealizado = ag.status === 'realizado';
+                          const isConfirmado = ag.status === 'confirmado';
+                          
+                          const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
+                          const dataAtualStr = obterDataLocalISO(new Date());
+                          const isSessaoPassada = ag.data < dataAtualStr || (ag.data === dataAtualStr && getMinutos(ag.hora) < minutosAtuais);
+                          const isSemEvolucao = isSessaoPassada && !isRealizado && !isCancelado;
+
+                          const cardClasses = isCancelado 
+                            ? 'bg-orange-50 border-orange-200 opacity-70'
+                            : isRealizado ? 'bg-green-50 border-green-200 opacity-80'
+                            : isConfirmado ? 'bg-[#e5f5ff] border-[#00A1FF] ring-1 ring-[#00A1FF]/30'
+                            : 'bg-white border-blue-100 hover:border-[#00A1FF] hover:shadow-md';
+
+                          return (
+                            <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between min-h-[60px] relative animate-in fade-in zoom-in-95 ${cardClasses}`}>
+                               {/* NOVA BOLINHA PISCANTE DISCRETA (Em vez de borda inteira vermelha) */}
+                               {isSemEvolucao && <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" title="Pendente de Evolução SOAP"></div>}
+                               
+                               <div className="flex justify-between items-start">
+                                  <span className={`text-[10px] font-black ${isSemEvolucao ? 'text-slate-800' : 'text-slate-700'}`}>{ag.hora}</span>
+                                  {ag.exerciciosPlanejados?.length > 0 && <Lightbulb size={12} className={`text-amber-500 fill-amber-400/30 shrink-0 ${isSemEvolucao ? 'mr-3' : ''}`} />}
+                               </div>
+                               <div className={`font-black text-[10px] truncate uppercase ${isSemEvolucao ? 'text-slate-900' : 'text-[#0F214A]'}`}>{ag.paciente}</div>
+                               <div className="text-[7px] font-black text-slate-400 uppercase truncate"><MapPin size={8} className="inline mr-0.5"/> {ag.local}</div>
+                            </div>
+                          );
+                        })}
                       </td>
                     );
                   })}
@@ -206,33 +240,51 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                 <button onClick={fecharFormularioGeral} className="p-2 bg-slate-100 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors"><X size={18}/></button>
              </div>
              
-             {agendamentoEditando && !modoCancelamento && (
-               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-                 <button onClick={() => { fecharFormularioGeral(); navegarPara('pacientes', { pacienteId: form.pacienteId, atualizarStatusAgendamento: agendamentoEditando }); }} className="bg-green-600 text-white py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs shadow-md">
+             {agendamentoEditando && !modoCancelamento && !mostrandoConduta && (
+               <div className="flex flex-wrap gap-2 mb-6">
+                 <button onClick={() => { fecharFormularioGeral(); navegarPara('pacientes', { pacienteId: form.pacienteId, atualizarStatusAgendamento: agendamentoEditando }); }} className="flex-1 bg-green-600 text-white py-3 px-4 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs shadow-md">
                     <FileText size={14}/> Prontuário
                  </button>
-                 <button onClick={async () => { await updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'confirmado' }); fecharFormularioGeral(); }} className="bg-blue-50 text-blue-600 py-3 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs border border-blue-200">
-                    <CheckCircle2 size={14}/> Confirmar
-                 </button>
-                 <button onClick={() => setModoCancelamento(true)} className="bg-orange-50 text-orange-600 py-3 rounded-xl font-bold flex justify-center items-center gap-1.5 text-xs border border-orange-200">
-                    <Ban size={14}/> Cancelar
-                 </button>
-                 <button onClick={async () => { if(window.confirm("Apagar sessão permanentemente?")) { await deleteDoc(doc(db, "agendamentos", agendamentoEditando)); fecharFormularioGeral(); } }} className="bg-red-50 text-red-600 py-3 rounded-xl font-bold flex justify-center items-center gap-1.5 text-xs border border-red-200">
-                    <Trash2 size={14}/> Apagar
+                 
+                 {agendamentoAtivo?.exerciciosPlanejados?.length > 0 && agendamentoAtivo?.profissionalId === user.id && (
+                     <button onClick={() => setMostrandoConduta(true)} className="flex-1 bg-amber-400 text-[#0F214A] py-3 px-4 rounded-xl font-black flex justify-center items-center gap-1.5 text-xs shadow-md">
+                        <Dumbbell size={14}/> Ver Conduta
+                     </button>
+                 )}
+                 
+                 <button onClick={() => setModoCancelamento(true)} className="flex-1 bg-orange-50 text-orange-600 py-3 px-4 rounded-xl font-bold flex justify-center items-center gap-1.5 text-xs border border-orange-200">
+                    <Ban size={14}/> Cancelar Sessão
                  </button>
                </div>
              )}
 
+             {mostrandoConduta && agendamentoAtivo && (
+                 <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-2xl border border-blue-200 animate-in zoom-in-95">
+                    <h4 className="font-black text-[#0F214A] mb-4 flex items-center gap-2"><Target size={18} className="text-[#00A1FF]"/> Conduta Planejada</h4>
+                    <div className="space-y-2 mb-4">
+                        {agendamentoAtivo.exerciciosPlanejados.map((ex, i) => (
+                            <div key={i} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                <span className="font-bold text-slate-800 text-sm">{ex.nome}</span>
+                                <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded-md">{ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <button onClick={() => setMostrandoConduta(false)} className="w-full py-3 bg-white text-slate-600 rounded-xl font-bold text-sm border hover:bg-slate-50 transition-colors">Voltar</button>
+                 </div>
+             )}
+
              {modoCancelamento ? (
                  <div className="mb-6 p-5 bg-orange-50 border border-orange-200 rounded-2xl animate-in zoom-in-95">
-                     <h4 className="font-black text-orange-800 mb-3 flex items-center gap-2"><Ban size={18}/> Qual o motivo?</h4>
-                     <div className="space-y-2">
-                         {['Antecedência > 24h', 'Antecedência > 12h', 'Falta sem aviso'].map(m => (
-                            <button key={m} onClick={() => { updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'cancelado', motivoCancelamento: m }); fecharFormularioGeral(); }} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-sm hover:bg-orange-100 transition-colors">{m}</button>
-                         ))}
+                     <h4 className="font-black text-orange-800 mb-4 flex items-center gap-2"><Ban size={18}/> Categoria de Cancelamento</h4>
+                     <div className="grid grid-cols-1 gap-2">
+                         <button onClick={() => { updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'cancelado', motivoCancelamento: 'Cancelamento > 24h (isento)' }); fecharFormularioGeral(); }} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-sm hover:bg-orange-100 transition-colors shadow-sm">Cancelamento &gt; 24 horas (isento)</button>
+                         <button onClick={() => { updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'cancelado', motivoCancelamento: 'Cancelamento < 24h' }); fecharFormularioGeral(); }} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-bold text-sm hover:bg-orange-100 transition-colors shadow-sm">Cancelamento &lt; 24 Horas</button>
+                         <button onClick={() => { updateDoc(doc(db, "agendamentos", agendamentoEditando), { status: 'cancelado', motivoCancelamento: 'Falta sem justificativa' }); fecharFormularioGeral(); }} className="w-full text-left p-3 bg-white border border-orange-200 rounded-xl font-black text-red-600 hover:bg-orange-100 transition-colors shadow-sm">Falta sem justificativa</button>
+                         <button onClick={aplicarExclusaoErro} className="w-full text-left p-3 mt-2 bg-red-50 border border-red-200 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors text-red-700 flex items-center justify-between shadow-sm"><span>Erro de agendamento (Apagar)</span> <Trash2 size={16}/></button>
                      </div>
+                     <button onClick={() => setModoCancelamento(false)} className="w-full mt-4 p-3 font-bold text-slate-500 text-sm hover:bg-white rounded-xl transition-colors">Voltar</button>
                  </div>
-             ) : (
+             ) : !mostrandoConduta && (
                  <form onSubmit={processarAgendamento} className="space-y-4">
                     {!agendamentoEditando && (
                       <div className="flex bg-slate-100 p-1 rounded-2xl mb-2">

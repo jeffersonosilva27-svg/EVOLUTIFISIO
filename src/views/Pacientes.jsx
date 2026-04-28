@@ -21,7 +21,6 @@ const obterDataLocalISO = (data) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
-// Nova função blindada contra o fuso horário do Brasil
 const formatarDataAgenda = (dataString) => {
   if (!dataString) return '';
   const partes = dataString.split('-');
@@ -359,7 +358,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     { id: 'historico', icon: FileText, label: 'Histórico Clínico', restritoFin: false, restritoClinico: false },
     { id: 'plano', icon: Dumbbell, label: 'Plano de Tratamento', restritoFin: false, restritoClinico: true },
     { id: 'produtos', icon: Package, label: 'Materiais / Produtos', restritoFin: false, restritoClinico: false },
-    { id: 'financeiro', icon: Landmark, label: 'Financeiro', restritoFin: true, restritoClinico: false },
+    { id: 'financeiro', icon: Landmark, label: 'Financeiro e Cobrança', restritoFin: true, restritoClinico: false },
     { id: 'dados', icon: Search, label: 'Arquivos e Exames', restritoFin: false, restritoClinico: false },
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restritoFin: false, restritoClinico: false }
   ];
@@ -409,7 +408,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
             <div className="flex flex-wrap gap-3 mt-3 text-slate-500 text-xs font-bold uppercase tracking-widest">
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><Smartphone size={12} className="mr-1.5"/> {pacienteSelecionado.whatsapp}</span>
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><CreditCard size={12} className="mr-1.5"/> {pacienteSelecionado.cpf}</span>
-              {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
+              
+              {/* Ocultando Valores para a Recepção no Header */}
+              {hasAccess(['gestor_clinico', 'admin_fin']) && (
                 <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl border border-blue-100">Sessão: R$ {pacienteSelecionado.valor}</span>
               )}
             </div>
@@ -754,12 +755,25 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           {tabAtiva === 'financeiro' && hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-2">
                <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm">
-                  <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Landmark className="text-green-500 mr-2"/> Resumo Rápido</h3>
-                  <div className="space-y-4">
-                     <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span className="text-xs md:text-sm font-bold text-slate-600">Valor Base da Sessão</span>
-                        <span className="font-black text-slate-900 text-lg">R$ {Number(pacienteSelecionado.valor || 0).toFixed(2)}</span>
-                     </div>
+                  <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Landmark className="text-green-500 mr-2"/> Faturamento e Cobrança</h3>
+                  
+                  {/* Valores escondidos da Receção, visíveis apenas à gestão/finanças */}
+                  {hasAccess(['gestor_clinico', 'admin_fin']) && (
+                      <div className="space-y-4 mb-6">
+                         <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <span className="text-xs md:text-sm font-bold text-slate-600">Valor Base da Sessão</span>
+                            <span className="font-black text-slate-900 text-lg">R$ {Number(pacienteSelecionado.valor || 0).toFixed(2)}</span>
+                         </div>
+                      </div>
+                  )}
+                  
+                  {/* NOVO: Acesso da Recepção à Geração de Relatórios */}
+                  <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
+                      <p className="text-sm font-black text-blue-900 mb-2">Relatório Individual</p>
+                      <p className="text-xs text-blue-800 mb-4 font-medium leading-relaxed">Emita o extrato consolidado de sessões realizadas e insumos consumidos para enviar a cobrança ao paciente.</p>
+                      <button onClick={() => window.print()} className="w-full bg-[#00A1FF] text-white py-3.5 rounded-xl font-black text-sm shadow-md hover:bg-blue-600 transition-colors flex items-center justify-center gap-2">
+                          <FileText size={18}/> Gerar PDF de Cobrança
+                      </button>
                   </div>
                </div>
             </div>
@@ -883,6 +897,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                 <input required placeholder="WhatsApp" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.whatsapp} onChange={e => setNovoPaciente({...novoPaciente, whatsapp: e.target.value})} />
                 <input required placeholder="Tel. Emergência" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.emergencia} onChange={e => setNovoPaciente({...novoPaciente, emergencia: e.target.value})} />
                 
+                {/* Recepção só insere o valor na criação ou visualiza escondido depois no card */}
                 {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
                   <input required type="number" placeholder="Valor da Sessão (R$)" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-green-600" value={novoPaciente.valor} onChange={e => setNovoPaciente({...novoPaciente, valor: e.target.value})} />
                 )}
