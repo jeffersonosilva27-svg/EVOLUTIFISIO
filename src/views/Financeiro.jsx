@@ -18,7 +18,7 @@ const parseValor = (valor) => {
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 // =========================================================================================
-// MÓDULO DE ESTOQUE (Embutido para otimizar espaço no menu principal)
+// MÓDULO DE ESTOQUE 
 // =========================================================================================
 function ModuloEstoque({ hasAccess }) {
   const [itens, setItens] = useState([]);
@@ -180,7 +180,6 @@ function ModuloEstoque({ hasAccess }) {
           <div className="bg-white p-10 rounded-[40px] w-full max-w-xl shadow-2xl animate-in zoom-in-95 overflow-y-auto max-h-[95vh] custom-scrollbar">
              <div className="flex justify-between items-center mb-8 shrink-0">
                 <h3 className="font-black text-2xl text-[#0F214A]">{editandoId ? 'Editar Item' : 'Novo Item no Estoque'}</h3>
-                {/* O 'X' AGORA ESTÁ IMPORTADO E FUNCIONA! */}
                 <button onClick={fecharFormulario} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X size={20}/></button>
              </div>
              
@@ -258,6 +257,9 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
   const [loading, setLoading] = useState(true);
   const [mesFiltro, setMesFiltro] = useState(new Date().getMonth());
   const [pacienteRelatorio, setPacienteRelatorio] = useState('');
+  
+  // NOVO: Filtro para visualizar os lucros por clínica específica
+  const [filtroClinica, setFiltroClinica] = useState('Todas'); 
 
   useEffect(() => {
     const unsubA = onSnapshot(collection(db, "agendamentos"), snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -290,7 +292,12 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
     agendamentos.forEach(ag => {
       const dataAg = new Date(ag.data + 'T12:00:00');
       if (dataAg.getMonth() !== mesFiltro) return;
+      
       const paciente = pacientes.find(p => p.id === ag.pacienteId);
+      
+      // Filtro Multi-Tenant para as estatísticas
+      if (filtroClinica !== 'Todas' && paciente?.clinica !== filtroClinica) return;
+
       const valorSessao = parseValor(paciente?.valor);
       
       if (ag.status === 'realizado') {
@@ -304,6 +311,10 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
     consumosGlobais.forEach(c => {
         const dataC = new Date(c.data);
         if (dataC.getMonth() !== mesFiltro) return;
+        
+        const paciente = pacientes.find(p => p.id === c.pacienteId);
+        if (filtroClinica !== 'Todas' && paciente?.clinica !== filtroClinica) return;
+
         realizado += parseValor(c.precoTotal);
     });
 
@@ -331,12 +342,25 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
 
   const imprimirRelatorio = () => { window.print(); };
 
+  // Filtra as entradas gerais pelo Multi-Tenant
   const entradasGerais = [
-      ...agendamentos.filter(a => a.status === 'realizado' && new Date(a.data + 'T12:00:00').getMonth() === mesFiltro).map(a => ({...a, tipoDoc: 'sessao', sortDate: new Date(a.data + 'T12:00:00')})),
-      ...consumosGlobais.filter(c => new Date(c.data).getMonth() === mesFiltro).map(c => ({...c, tipoDoc: 'produto', sortDate: new Date(c.data)}))
+      ...agendamentos.filter(a => {
+          if (a.status !== 'realizado' || new Date(a.data + 'T12:00:00').getMonth() !== mesFiltro) return false;
+          const pac = pacientes.find(p => p.id === a.pacienteId);
+          if (filtroClinica !== 'Todas' && pac?.clinica !== filtroClinica) return false;
+          return true;
+      }).map(a => ({...a, tipoDoc: 'sessao', sortDate: new Date(a.data + 'T12:00:00')})),
+      
+      ...consumosGlobais.filter(c => {
+          if (new Date(c.data).getMonth() !== mesFiltro) return false;
+          const pac = pacientes.find(p => p.id === c.pacienteId);
+          if (filtroClinica !== 'Todas' && pac?.clinica !== filtroClinica) return false;
+          return true;
+      }).map(c => ({...c, tipoDoc: 'produto', sortDate: new Date(c.data)}))
   ].sort((a,b) => b.sortDate - a.sortDate);
 
   const pacientesOrdenados = [...pacientes].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  const isReabtech = pacienteSelecionadoDados?.clinica === 'Reabtech';
 
   if (loading) return ( <div className="h-full flex flex-col items-center justify-center"><Loader2 className="animate-spin text-[#00A1FF] mb-4" size={48} /><p className="font-black text-slate-400 uppercase text-xs">Sincronizando faturamento...</p></div> );
 
@@ -356,15 +380,29 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
           <ModuloEstoque hasAccess={hasAccess} />
       ) : (
           <div className="space-y-8 animate-in slide-in-from-left-4 duration-300">
-              <div className="flex flex-col md:flex-row justify-between items-end gap-4 print:hidden">
+              <div className="flex flex-col lg:flex-row justify-between lg:items-end gap-4 print:hidden">
                 <div>
                   <h1 className="text-3xl font-black text-[#0F214A] tracking-tight flex items-center gap-3"><Landmark className="text-green-500" size={32}/> Visão Financeira</h1>
                   <p className="text-slate-500 font-medium mt-1">Faturamento de sessões e vendas de materiais da clínica.</p>
                 </div>
-                <div className="flex items-center bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-                  <button onClick={voltarMes} className="p-2 hover:bg-slate-50 rounded-xl transition-colors"><ChevronLeft size={20} className="text-[#0F214A]"/></button>
-                  <span className="w-32 text-center font-black text-[#00A1FF] uppercase tracking-widest">{MESES[mesFiltro]}</span>
-                  <button onClick={avancarMes} className="p-2 hover:bg-slate-50 rounded-xl transition-colors"><ChevronRight size={20} className="text-[#0F214A]"/></button>
+                
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* NOVO: Filtro Dinâmico de Clínica no Financeiro */}
+                  <select 
+                    className="p-3 bg-white border border-slate-200 shadow-sm rounded-xl font-bold text-slate-700 outline-none focus:border-[#00A1FF]"
+                    value={filtroClinica}
+                    onChange={(e) => setFiltroClinica(e.target.value)}
+                  >
+                     <option value="Todas">Geral (Ambas as Clínicas)</option>
+                     <option value="Vida">Somente Clínica Vida</option>
+                     <option value="Reabtech">Somente Reabtech</option>
+                  </select>
+
+                  <div className="flex items-center bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
+                    <button onClick={voltarMes} className="p-2 hover:bg-slate-50 rounded-lg transition-colors"><ChevronLeft size={20} className="text-[#0F214A]"/></button>
+                    <span className="w-32 text-center font-black text-[#00A1FF] uppercase tracking-widest">{MESES[mesFiltro]}</span>
+                    <button onClick={avancarMes} className="p-2 hover:bg-slate-50 rounded-lg transition-colors"><ChevronRight size={20} className="text-[#0F214A]"/></button>
+                  </div>
                 </div>
               </div>
 
@@ -389,7 +427,7 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:hidden">
                 <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm p-8">
-                  <h3 className="text-xl font-black text-[#0F214A] mb-6 flex items-center gap-2"><PieChart className="text-[#00A1FF]"/> Produção por Profissional (Sessões)</h3>
+                  <h3 className="text-xl font-black text-[#0F214A] mb-6 flex items-center gap-2"><PieChart className="text-[#00A1FF]"/> Produção por Profissional</h3>
                   <div className="space-y-6">
                     {Object.entries(stats.porProfissional).length > 0 ? Object.entries(stats.porProfissional).sort((a,b) => b[1] - a[1]).map(([nome, valor]) => (
                         <div key={nome}>
@@ -476,22 +514,26 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
                      </select>
                   </div>
 
-                  {pacienteRelatorio ? (
+                  {pacienteRelatorio && pacienteSelecionadoDados ? (
                      <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 print:bg-white print:border-none print:p-0">
-                        <div className="flex justify-between items-start border-b-4 border-[#0F214A] pb-6 mb-6">
+                        {/* CABEÇALHO DINÂMICO MULTI-TENANT PARA IMPRESSÃO */}
+                        <div className={`flex justify-between items-start border-b-4 pb-6 mb-6 ${isReabtech ? 'border-orange-500' : 'border-[#0F214A]'}`}>
                            <div>
-                              <h4 className="text-3xl font-black text-slate-900 uppercase">{pacienteSelecionadoDados?.nome}</h4>
-                              <p className="text-slate-500 font-bold mt-1">Documento: {pacienteSelecionadoDados?.cpf || 'Não registrado'}</p>
+                              <h4 className="text-3xl font-black text-slate-900 uppercase">{pacienteSelecionadoDados.nome}</h4>
+                              <p className="text-slate-500 font-bold mt-1">Documento: {pacienteSelecionadoDados.cpf || 'Não registrado'}</p>
                            </div>
                            <div className="text-right">
                               <p className="text-xs font-black uppercase text-slate-400 tracking-widest">Extrato de Serviços • {MESES[mesFiltro]} de {new Date().getFullYear()}</p>
-                              <h1 className="text-3xl font-black text-[#00A1FF] tracking-tight mt-1">EVOLUTI CLINIC</h1>
+                              
+                              <h1 className={`text-3xl font-black tracking-tight mt-1 ${isReabtech ? 'text-orange-600' : 'text-emerald-600'}`}>
+                                 {isReabtech ? 'REABTECH REABILITAÇÃO' : 'CLÍNICA VIDA'}
+                              </h1>
                            </div>
                         </div>
 
                         {Object.keys(sessoesPorCategoria).length > 0 && Object.entries(sessoesPorCategoria).map(([categoria, sessoes]) => (
                            <div key={categoria} className="mb-6">
-                              <h5 className="font-black text-[#0F214A] uppercase tracking-widest mb-3 bg-blue-50 px-4 py-2 rounded-lg inline-block border border-blue-100">{categoria}</h5>
+                              <h5 className={`font-black uppercase tracking-widest mb-3 px-4 py-2 rounded-lg inline-block border ${isReabtech ? 'bg-orange-50 text-orange-800 border-orange-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>{categoria}</h5>
                               <table className="w-full text-left mb-2">
                                  <thead>
                                     <tr className="border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -542,11 +584,11 @@ export default function Financeiro({ user, navegarPara, hasAccess }) {
 
                         <div className="flex justify-end items-center gap-6 mt-8 pt-6 border-t-2 border-slate-200 bg-white p-4 rounded-2xl print:bg-transparent print:p-0">
                            <span className="font-black text-slate-400 uppercase tracking-widest text-sm">Valor Total da Fatura:</span>
-                           <span className="text-4xl font-black text-[#00A1FF]">R$ {totalGeralFatura.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                           <span className={`text-4xl font-black ${isReabtech ? 'text-orange-600' : 'text-emerald-600'}`}>R$ {totalGeralFatura.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
 
                         <div className="mt-8 pt-6 border-t border-slate-200 flex justify-end print:hidden">
-                           <button onClick={imprimirRelatorio} disabled={totalGeralFatura === 0} className="bg-[#00A1FF] text-white px-8 py-4 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-[#0F214A] transition-colors shadow-lg disabled:opacity-50">
+                           <button onClick={imprimirRelatorio} disabled={totalGeralFatura === 0} className={`${isReabtech ? 'bg-orange-600 hover:bg-orange-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-8 py-4 rounded-xl font-black text-sm flex items-center gap-2 transition-colors shadow-lg disabled:opacity-50`}>
                               <Printer size={18}/> Gerar Fatura em PDF
                            </button>
                         </div>

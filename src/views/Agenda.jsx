@@ -50,7 +50,14 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
   useEffect(() => {
     if (!user) return;
     const unsubAgenda = onSnapshot(collection(db, "agendamentos"), snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubPac = onSnapshot(collection(db, "pacientes"), snap => setPacientes(snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || 'Sem nome' }))));
+    
+    // Capturando a Clínica de cada Paciente para as bolinhas
+    const unsubPac = onSnapshot(collection(db, "pacientes"), snap => setPacientes(snap.docs.map(d => ({ 
+        id: d.id, 
+        nome: d.data()?.nome || 'Sem nome',
+        clinica: d.data()?.clinica || 'Vida' 
+    }))));
+
     const unsubProf = onSnapshot(collection(db, "profissionais"), snap => {
       setProfissionais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.nome && p.categoriaBase !== 'recepcao' && p.role !== 'recepcao'));
     });
@@ -59,6 +66,26 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
   const verificarConflito = (d, h, pId, l, idIgnorar = null) => {
     return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && !['Atendimento Domiciliar', 'Ginásio Clínico', 'Atendimento Hospitalar'].includes(l))));
+  };
+
+  const getSalasRecomendadas = () => {
+    const prof = profissionais.find(p => p.id === form.profissionalId);
+    if (!prof) return [];
+    if (prof.categoriaBase === 'fisio') return ['Sala 701', 'Sala 703'];
+    if (prof.categoriaBase === 'to') return ['Sala 704', 'Sala 705'];
+    return [];
+  };
+
+  const verificarUsoSala702 = () => {
+    if (form.local !== 'Sala 702') return true;
+    const recomendadas = getSalasRecomendadas();
+    const ocupadas = agendamentos.filter(a => a.data === form.data && a.hora === form.hora && a.status !== 'cancelado').map(a => a.local);
+    const temDisponivel = recomendadas.some(sala => !ocupadas.includes(sala));
+    
+    if (temDisponivel) {
+      return window.confirm("Atenção: Existem salas preferenciais disponíveis. A Sala 702 deve ser usada apenas como último recurso. Deseja prosseguir mesmo assim?");
+    }
+    return true;
   };
 
   const abrirFormEdicao = (agend) => {
@@ -85,17 +112,19 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
   const processarAgendamento = async (e) => {
     e.preventDefault();
+    if (!verificarUsoSala702()) return;
+
     setCarregandoIA(true);
     
     try {
       if (agendamentoEditando) {
         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local, agendamentoEditando);
-        if (conflito) { alert("Conflito detectado!"); setCarregandoIA(false); return; }
+        if (conflito) { alert("Conflito detectado! Sala ou Profissional já ocupados."); setCarregandoIA(false); return; }
         await updateDoc(doc(db, "agendamentos", agendamentoEditando), { ...form, paciente: form.pacienteNome, profissional: form.profissionalNome });
         alert("Alteração guardada!");
       } else if (!isLote) {
         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
-        if (conflito) { alert("Conflito detectado!"); setCarregandoIA(false); return; }
+        if (conflito) { alert("Conflito detectado! Sala ou Profissional já ocupados."); setCarregandoIA(false); return; }
         await addDoc(collection(db, "agendamentos"), { ...form, paciente: form.pacienteNome, profissional: form.profissionalNome, status: 'pendente' });
         alert("Agendamento criado!");
       } else {
@@ -197,6 +226,11 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                           const isRealizado = ag.status === 'realizado';
                           const isConfirmado = ag.status === 'confirmado';
                           
+                          // Puxar os dados do paciente para ver a Clínica
+                          const pacDados = pacientes.find(p => p.id === ag.pacienteId);
+                          const isReabtech = pacDados?.clinica === 'Reabtech';
+                          
+                          // Lógica para Bolinha Vermelha (Sessão já ocorreu, mas sem evolução 'realizado')
                           const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
                           const dataAtualStr = obterDataLocalISO(new Date());
                           const isSessaoPassada = ag.data < dataAtualStr || (ag.data === dataAtualStr && getMinutos(ag.hora) < minutosAtuais);
@@ -210,15 +244,21 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
                           return (
                             <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between min-h-[60px] relative animate-in fade-in zoom-in-95 ${cardClasses}`}>
-                               {/* NOVA BOLINHA PISCANTE DISCRETA (Em vez de borda inteira vermelha) */}
+                               
+                               {/* Luz Vermelha Piscante de Pendência (Canto Superior Direito) */}
                                {isSemEvolucao && <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" title="Pendente de Evolução SOAP"></div>}
                                
                                <div className="flex justify-between items-start">
-                                  <span className={`text-[10px] font-black ${isSemEvolucao ? 'text-slate-800' : 'text-slate-700'}`}>{ag.hora}</span>
-                                  {ag.exerciciosPlanejados?.length > 0 && <Lightbulb size={12} className={`text-amber-500 fill-amber-400/30 shrink-0 ${isSemEvolucao ? 'mr-3' : ''}`} />}
+                                  <div className="flex items-center gap-1.5">
+                                      {/* Bolinha Elegante da Clínica (Canto Superior Esquerdo ao lado da hora) */}
+                                      <div className={`w-2 h-2 rounded-full shadow-sm ${isReabtech ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Clínica ${isReabtech ? 'Reabtech' : 'Vida'}`}></div>
+                                      
+                                      <span className={`text-[10px] font-black ${isSemEvolucao ? 'text-slate-800' : 'text-slate-700'}`}>{ag.hora}</span>
+                                  </div>
+                                  {ag.exerciciosPlanejados?.length > 0 && <Lightbulb size={12} className={`text-amber-500 fill-amber-400/30 shrink-0 ${isSemEvolucao ? 'mr-3' : ''}`} title="Conduta Planejada" />}
                                </div>
-                               <div className={`font-black text-[10px] truncate uppercase ${isSemEvolucao ? 'text-slate-900' : 'text-[#0F214A]'}`}>{ag.paciente}</div>
-                               <div className="text-[7px] font-black text-slate-400 uppercase truncate"><MapPin size={8} className="inline mr-0.5"/> {ag.local}</div>
+                               <div className={`font-black text-[10px] truncate uppercase mt-1 ${isSemEvolucao ? 'text-slate-900' : 'text-[#0F214A]'}`}>{ag.paciente}</div>
+                               <div className="text-[7px] font-black text-slate-400 uppercase truncate mt-auto"><MapPin size={8} className="inline mr-0.5"/> {ag.local}</div>
                             </div>
                           );
                         })}
@@ -303,11 +343,18 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                           <option value="">Fisio / TO...</option>
                           {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                       </select>
-                      <select required className={`p-3.5 bg-slate-50 rounded-2xl font-bold text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] focus:bg-white`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
+                      
+                      <select required className={`p-3.5 rounded-2xl font-bold text-sm outline-none border-2 truncate ${getSalasRecomendadas().includes(form.local) ? 'border-green-200 bg-green-50 focus:border-green-400' : 'bg-slate-50 border-transparent focus:border-[#00A1FF] focus:bg-white'}`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
                           <option value="">Sala / Local...</option>
-                          {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
+                          {LOCAIS.map(l => <option key={l} value={l}>{l} {getSalasRecomendadas().includes(l) ? '⭐' : ''} {l === 'Sala 702' ? '(Reserva)' : ''}</option>)}
                       </select>
                     </div>
+                    
+                    {form.profissionalId && getSalasRecomendadas().length > 0 && (
+                      <div className="px-3 py-2 bg-blue-50 rounded-lg text-[10px] font-bold text-blue-700 flex items-center gap-2">
+                        <MapPin size={12} className="shrink-0"/> Sugestão: {getSalasRecomendadas().join(' ou ')}. Use a 702 apenas se necessário.
+                      </div>
+                    )}
 
                     <div className="p-5 bg-slate-50 rounded-3xl space-y-4 border border-slate-100">
                         <div className="grid grid-cols-2 gap-3">

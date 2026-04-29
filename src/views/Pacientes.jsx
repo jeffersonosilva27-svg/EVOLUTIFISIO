@@ -3,7 +3,7 @@ import {
   Plus, Search, X, ChevronLeft, Award, Smartphone, CreditCard,
   Trash2, Edit3, Landmark, Sparkles, ChevronRight, MessageCircle,
   TrendingDown, FileText, Loader2, CalendarClock, Target, ShieldAlert, 
-  Package, ShoppingCart, CheckCircle2, Layers, Dumbbell, Users, CornerDownRight, Lightbulb
+  Package, ShoppingCart, CheckCircle2, Layers, Dumbbell, Users, CornerDownRight, Lightbulb, Building2
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
@@ -15,6 +15,8 @@ const GRUPOS_MUSCULARES = [
   'Joelhos', 'Panturrilhas / Tornozelos', 'Membros Superiores (Geral)',
   'Respiratório / TMI'
 ];
+
+const CLINICAS = ['Vida', 'Reabtech'];
 
 const obterDataLocalISO = (data) => {
   const d = data instanceof Date ? data : new Date();
@@ -30,6 +32,7 @@ const formatarDataAgenda = (dataString) => {
 
 export default function Pacientes({ pacientes, hasAccess, user, navParams, setModalActive }) {
   const [termoBusca, setTermoBusca] = useState('');
+  const [filtroClinica, setFiltroClinica] = useState('Todas');
   const [mostrarForm, setMostrarForm] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
   const [tabAtiva, setTabAtiva] = useState('historico'); 
@@ -45,7 +48,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
   const [editandoId, setEditandoId] = useState(null);
   const [novoPaciente, setNovoPaciente] = useState({
-    nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: ''
+    nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '', clinica: 'Vida'
   });
 
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
@@ -100,7 +103,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     try {
       if (editandoId) {
         await updateDoc(doc(db, "pacientes", editandoId), novoPaciente);
-        if(pacienteSelecionado?.id === editandoId) setPacienteSelecionado({...pacienteSelecionado, ...novoPaciente});
+        if(pacienteSelecionado && pacienteSelecionado.id === editandoId) {
+            setPacienteSelecionado({...pacienteSelecionado, ...novoPaciente});
+        }
         alert("Dados atualizados!");
       } else {
         await addDoc(collection(db, "pacientes"), { ...novoPaciente, dataCadastro: new Date().toISOString(), status: 'ativo' });
@@ -115,11 +120,12 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
         setEditandoId(p.id);
         setNovoPaciente({ 
             nome: p.nome || '', cpf: p.cpf || '', whatsapp: p.whatsapp || '', 
-            emergencia: p.emergencia || '', valor: p.valor || '', observacoes: p.observacoes || '' 
+            emergencia: p.emergencia || '', valor: p.valor || '', observacoes: p.observacoes || '',
+            clinica: p.clinica || 'Vida'
         });
     } else {
         setEditandoId(null);
-        setNovoPaciente({ nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '' });
+        setNovoPaciente({ nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '', clinica: 'Vida' });
     }
     setMostrarForm(true);
   };
@@ -127,7 +133,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const fecharFormulario = () => {
     setMostrarForm(false);
     setEditandoId(null);
-    setNovoPaciente({ nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '' });
+    setNovoPaciente({ nome: '', cpf: '', whatsapp: '', emergencia: '', valor: '', observacoes: '', clinica: 'Vida' });
   };
 
   const excluirPaciente = async (id) => {
@@ -212,7 +218,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       if (!sessaoModulacaoId) return alert("Selecione uma sessão futura agendada.");
       try {
           await updateDoc(doc(db, "agendamentos", sessaoModulacaoId), { exerciciosPlanejados: exerciciosSessao });
-          alert("Sessão modulada e guardada com sucesso! Ela brilhará na tela inicial no dia do atendimento.");
+          alert("Sessão modulada e guardada com sucesso!");
       } catch(e) {
           alert("Erro ao salvar modulação.");
       }
@@ -350,6 +356,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
   const filtrados = (pacientes || [])
     .filter(p => (p.nome || '').toLowerCase().includes(termoBusca.toLowerCase()))
+    .filter(p => filtroClinica === 'Todas' || p.clinica === filtroClinica)
     .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
   const estoqueOrdenado = [...estoqueGeral].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
@@ -363,6 +370,58 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restritoFin: false, restritoClinico: false }
   ];
 
+  // ==============================================================================
+  // RENDERIZAÇÃO DO MODAL DE FORMULÁRIO (Componente Global)
+  // Agora está disponível para saltar tanto na Lista como no Perfil
+  // ==============================================================================
+  const renderFormularioModal = () => {
+      if (!mostrarForm) return null;
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+          <div className="bg-white p-6 md:p-10 rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 relative overflow-y-auto max-h-[90vh] custom-scrollbar">
+             <div className="flex justify-between items-center mb-8 shrink-0">
+                <h3 className="font-black text-2xl text-[#0F214A]">{editandoId ? 'Atualizar Dados' : 'Novo Registro de Paciente'}</h3>
+                <button onClick={fecharFormulario} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X/></button>
+             </div>
+             <form onSubmit={salvarPaciente} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-[#0F214A] mb-2 flex items-center gap-1"><Building2 size={14}/> Vincular à Clínica</label>
+                    <div className="flex gap-4">
+                        {CLINICAS.map(c => (
+                            <label key={c} className={`flex-1 flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all font-black text-sm ${novoPaciente.clinica === c ? (c === 'Reabtech' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-emerald-500 bg-emerald-50 text-emerald-700') : 'border-slate-200 bg-white text-slate-400'}`}>
+                                <input type="radio" name="clinica" value={c} checked={novoPaciente.clinica === c} onChange={(e) => setNovoPaciente({...novoPaciente, clinica: e.target.value})} className="hidden" />
+                                {c}
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <input required placeholder="Nome Completo" className="w-full border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.nome} onChange={e => setNovoPaciente({...novoPaciente, nome: e.target.value})} />
+                </div>
+                <input required placeholder="CPF" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.cpf} onChange={e => setNovoPaciente({...novoPaciente, cpf: e.target.value})} />
+                <input required placeholder="WhatsApp" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.whatsapp} onChange={e => setNovoPaciente({...novoPaciente, whatsapp: e.target.value})} />
+                <input required placeholder="Tel. Emergência" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.emergencia} onChange={e => setNovoPaciente({...novoPaciente, emergencia: e.target.value})} />
+                
+                {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
+                  <input required type="number" placeholder="Valor da Sessão (R$)" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-green-600" value={novoPaciente.valor} onChange={e => setNovoPaciente({...novoPaciente, valor: e.target.value})} />
+                )}
+                
+                <textarea placeholder="Observações clínicas iniciais..." className="md:col-span-2 border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] h-24 font-medium text-slate-700" value={novoPaciente.observacoes} onChange={e => setNovoPaciente({...novoPaciente, observacoes: e.target.value})} />
+                
+                <button type="submit" className="md:col-span-2 bg-[#00A1FF] text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-[#0F214A] transition-all">
+                  {editandoId ? 'Salvar Alterações' : 'Concluir Cadastro no Sistema'}
+                </button>
+             </form>
+          </div>
+        </div>
+      );
+  };
+
+  // ==============================================================================
+  // TELA 1: DETALHES DO PACIENTE (Ficha completa)
+  // ==============================================================================
   if (pacienteSelecionado) {
     const historicoEVAReal = [...evolucoes].filter(e => e.metricaPain !== undefined && e.metricaPain !== null).reverse().slice(-10);
 
@@ -384,7 +443,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 pb-20">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
           <button onClick={() => {setPacienteSelecionado(null); setTabAtiva('historico'); setConfirmarExclusao(false);}} className="flex items-center text-slate-500 font-bold hover:text-[#00A1FF] transition-colors w-fit">
             <ChevronLeft className="mr-1"/> Voltar para a Base
           </button>
@@ -402,14 +461,17 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm">
-            <h2 className="text-2xl md:text-3xl font-black text-slate-900 break-words">{pacienteSelecionado.nome}</h2>
-            <div className="flex flex-wrap gap-3 mt-3 text-slate-500 text-xs font-bold uppercase tracking-widest">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:hidden">
+          <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden">
+            <div className={`absolute top-0 right-0 px-6 py-2 rounded-bl-3xl font-black text-xs uppercase tracking-widest ${pacienteSelecionado.clinica === 'Reabtech' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                {pacienteSelecionado.clinica || 'Vida'}
+            </div>
+
+            <h2 className="text-2xl md:text-3xl font-black text-slate-900 break-words mt-2">{pacienteSelecionado.nome}</h2>
+            <div className="flex flex-wrap gap-3 mt-4 text-slate-500 text-xs font-bold uppercase tracking-widest">
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><Smartphone size={12} className="mr-1.5"/> {pacienteSelecionado.whatsapp}</span>
               <span className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center"><CreditCard size={12} className="mr-1.5"/> {pacienteSelecionado.cpf}</span>
               
-              {/* Ocultando Valores para a Recepção no Header */}
               {hasAccess(['gestor_clinico', 'admin_fin']) && (
                 <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl border border-blue-100">Sessão: R$ {pacienteSelecionado.valor}</span>
               )}
@@ -435,7 +497,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           </div>
         </div>
 
-        <div className="flex flex-nowrap w-full border-b border-slate-200 overflow-x-auto custom-scrollbar touch-pan-x hide-scrollbar">
+        <div className="flex flex-nowrap w-full border-b border-slate-200 overflow-x-auto custom-scrollbar touch-pan-x hide-scrollbar print:hidden">
           {abasDisponiveis.map(tab => {
             if (tab.restritoFin && !hasAccess(['gestor_clinico', 'admin_fin', 'recepcao'])) return null;
             if (tab.restritoClinico && !hasAccess(['gestor_clinico', 'fisio', 'to'])) return null;
@@ -447,9 +509,9 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           })}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 print:m-0">
           {tabAtiva === 'historico' && (
-            <div className="space-y-6">
+            <div className="space-y-6 print:hidden">
                <div className={`p-6 md:p-8 rounded-[32px] border transition-colors ${editandoEvolucaoId ? 'bg-amber-50 border-amber-200' : 'bg-blue-50/50 border-blue-100'}`}>
                   
                   {!editandoEvolucaoId && (
@@ -525,7 +587,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           )}
 
           {tabAtiva === 'plano' && (
-             <div className="space-y-6 animate-in slide-in-from-bottom-4">
+             <div className="space-y-6 animate-in slide-in-from-bottom-4 print:hidden">
 
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 md:p-8 rounded-[32px] border border-blue-100 shadow-sm">
                    <h3 className="font-black text-[#0F214A] flex items-center gap-2 mb-6 text-lg"><Layers className="text-[#00A1FF]"/> Modulação de Atendimento (Planejar Sessão)</h3>
@@ -730,7 +792,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                    {consumosPaciente.map(c => (
                                       <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                                          <td className="p-3 md:p-4 text-[10px] md:text-xs font-bold text-slate-500">{new Date(c.data).toLocaleDateString('pt-BR')}</td>
-                                         <td className="p-3 md:p-4 text-xs md:text-sm font-black text-[#0F214A]">{c.itemNome} <span className="text-[9px] font-bold text-slate-400 block font-normal">por {c.profissional?.split(' ')[0]}</span></td>
+                                         <td className="p-3 md:p-4 text-xs md:text-sm font-black text-[#0F214A]">{c.itemNome} <span className="text-[9px] font-bold text-slate-400 block font-normal">por {c.profissional.split(' ')[0]}</span></td>
                                          <td className="p-3 md:p-4 text-xs md:text-sm font-bold text-slate-600 text-center">{c.quantidade} {c.unidade}</td>
                                          <td className="p-3 md:p-4 text-sm font-black text-green-600 text-right">R$ {Number(c.precoTotal).toFixed(2)}</td>
                                          <td className="p-3 md:p-4 text-center">
@@ -757,7 +819,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm">
                   <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Landmark className="text-green-500 mr-2"/> Faturamento e Cobrança</h3>
                   
-                  {/* Valores escondidos da Receção, visíveis apenas à gestão/finanças */}
                   {hasAccess(['gestor_clinico', 'admin_fin']) && (
                       <div className="space-y-4 mb-6">
                          <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -767,7 +828,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                       </div>
                   )}
                   
-                  {/* NOVO: Acesso da Recepção à Geração de Relatórios */}
                   <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
                       <p className="text-sm font-black text-blue-900 mb-2">Relatório Individual</p>
                       <p className="text-xs text-blue-800 mb-4 font-medium leading-relaxed">Emita o extrato consolidado de sessões realizadas e insumos consumidos para enviar a cobrança ao paciente.</p>
@@ -828,10 +888,16 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
             </div>
           )}
         </div>
+        
+        {/* INJEÇÃO DO MODAL PARA O PERFIL DO PACIENTE (Correção do Bug!) */}
+        {renderFormularioModal()}
       </div>
     );
   }
 
+  // ==============================================================================
+  // TELA 2: LISTA GERAL DE PACIENTES
+  // ==============================================================================
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
@@ -844,23 +910,39 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
         </button>
       </div>
 
-      <div className="bg-white p-3 md:p-4 rounded-[24px] border border-slate-200 shadow-sm flex items-center focus-within:border-[#00A1FF] transition-all">
-        <Search className="text-slate-400 mr-2 md:mr-3" size={20}/>
-        <input placeholder="Procurar paciente pelo nome..." className="flex-1 outline-none text-slate-700 bg-transparent font-bold text-sm md:text-base" value={termoBusca} onChange={e => setTermoBusca(e.target.value)} />
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="bg-white p-3 md:p-4 rounded-[24px] border border-slate-200 shadow-sm flex items-center focus-within:border-[#00A1FF] transition-all flex-1">
+          <Search className="text-slate-400 mr-2 md:mr-3" size={20}/>
+          <input placeholder="Procurar paciente pelo nome..." className="flex-1 outline-none text-slate-700 bg-transparent font-bold text-sm md:text-base" value={termoBusca} onChange={e => setTermoBusca(e.target.value)} />
+        </div>
+        
+        <select 
+          className="bg-white p-3 md:p-4 rounded-[24px] border border-slate-200 shadow-sm outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm sm:w-48 cursor-pointer"
+          value={filtroClinica}
+          onChange={(e) => setFiltroClinica(e.target.value)}
+        >
+           <option value="Todas">Todas as Clínicas</option>
+           {CLINICAS.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtrados.map(p => {
            const linkWhatsApp = `https://wa.me/${(p.whatsapp || '').replace(/\D/g, '')}`;
+           const isReabtech = p.clinica === 'Reabtech';
            return (
-             <div key={p.id} onClick={() => setPacienteSelecionado(p)} className="bg-white p-5 md:p-6 rounded-[24px] border border-slate-200 shadow-sm hover:border-[#00A1FF] hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
-                <div>
+             <div key={p.id} onClick={() => setPacienteSelecionado(p)} className="bg-white p-5 md:p-6 rounded-[24px] border border-slate-200 shadow-sm hover:border-[#00A1FF] hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden">
+                <div className={`absolute top-0 right-0 px-3 py-1 rounded-bl-xl text-[9px] font-black uppercase tracking-wider ${isReabtech ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {p.clinica || 'Vida'}
+                </div>
+                
+                <div className="pt-2">
                    <div className="flex justify-between items-start mb-4 gap-3">
                       <div className="flex-1 min-w-0">
                         <h3 className="font-black text-[#0F214A] text-base md:text-lg leading-tight group-hover:text-[#00A1FF] transition-colors truncate">{p.nome}</h3>
                         <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">CPF: {p.cpf}</p>
                       </div>
-                      <div className="w-8 h-8 md:w-10 md:h-10 shrink-0 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-[#00A1FF] transition-colors">
+                      <div className="w-8 h-8 md:w-10 md:h-10 shrink-0 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-[#00A1FF] transition-colors mt-2">
                         <ChevronRight className="text-[#00A1FF] group-hover:text-white" size={18}/>
                       </div>
                    </div>
@@ -878,39 +960,13 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       {filtrados.length === 0 && (
          <div className="text-center py-16 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
             <Users size={48} className="mx-auto text-slate-300 mb-4"/>
-            <p className="font-bold text-slate-500">Nenhum paciente encontrado com esse nome.</p>
+            <p className="font-bold text-slate-500">Nenhum paciente encontrado com esse filtro.</p>
          </div>
       )}
 
-      {mostrarForm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white p-10 rounded-[40px] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 relative overflow-y-auto max-h-[90vh]">
-             <div className="flex justify-between items-center mb-8">
-                <h3 className="font-black text-2xl text-[#0F214A]">{editandoId ? 'Atualizar Dados' : 'Novo Registro de Paciente'}</h3>
-                <button onClick={fecharFormulario} className="text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X/></button>
-             </div>
-             <form onSubmit={salvarPaciente} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2">
-                  <input required placeholder="Nome Completo" className="w-full border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.nome} onChange={e => setNovoPaciente({...novoPaciente, nome: e.target.value})} />
-                </div>
-                <input required placeholder="CPF" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.cpf} onChange={e => setNovoPaciente({...novoPaciente, cpf: e.target.value})} />
-                <input required placeholder="WhatsApp" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.whatsapp} onChange={e => setNovoPaciente({...novoPaciente, whatsapp: e.target.value})} />
-                <input required placeholder="Tel. Emergência" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-slate-700" value={novoPaciente.emergencia} onChange={e => setNovoPaciente({...novoPaciente, emergencia: e.target.value})} />
-                
-                {/* Recepção só insere o valor na criação ou visualiza escondido depois no card */}
-                {hasAccess(['gestor_clinico', 'admin_fin', 'recepcao']) && (
-                  <input required type="number" placeholder="Valor da Sessão (R$)" className="border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] font-bold text-green-600" value={novoPaciente.valor} onChange={e => setNovoPaciente({...novoPaciente, valor: e.target.value})} />
-                )}
-                
-                <textarea placeholder="Observações clínicas iniciais..." className="md:col-span-2 border-2 p-4 rounded-xl bg-slate-50 outline-none focus:border-[#00A1FF] h-24 font-medium text-slate-700" value={novoPaciente.observacoes} onChange={e => setNovoPaciente({...novoPaciente, observacoes: e.target.value})} />
-                
-                <button type="submit" className="md:col-span-2 bg-[#00A1FF] text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-[#0F214A] transition-all">
-                  {editandoId ? 'Salvar Alterações' : 'Concluir Cadastro no Sistema'}
-                </button>
-             </form>
-          </div>
-        </div>
-      )}
+      {/* RENDERIZAÇÃO DO MODAL NA LISTA GERAL */}
+      {renderFormularioModal()}
+
     </div>
   );
 }
