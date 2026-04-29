@@ -370,10 +370,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     { id: 'ia', icon: Sparkles, label: 'Agente IA', restritoFin: false, restritoClinico: false }
   ];
 
-  // ==============================================================================
-  // RENDERIZAÇÃO DO MODAL DE FORMULÁRIO (Componente Global)
-  // Agora está disponível para saltar tanto na Lista como no Perfil
-  // ==============================================================================
   const renderFormularioModal = () => {
       if (!mostrarForm) return null;
       return (
@@ -419,9 +415,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       );
   };
 
-  // ==============================================================================
-  // TELA 1: DETALHES DO PACIENTE (Ficha completa)
-  // ==============================================================================
   if (pacienteSelecionado) {
     const historicoEVAReal = [...evolucoes].filter(e => e.metricaPain !== undefined && e.metricaPain !== null).reverse().slice(-10);
 
@@ -656,7 +649,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                 <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm mt-8">
                    <h3 className="font-black text-slate-800 mb-6 flex items-center text-lg"><Target className="text-slate-400 mr-2"/> Adicionar ao Plano (Banco Global Inteligente)</h3>
                    
-                   <form onSubmit={adicionarExercicio} className="bg-slate-50 p-5 md:p-6 rounded-2xl border border-slate-200 mb-8">
+                   <form onSubmit={adicionarExercicio} className="bg-slate-50 p-5 md:p-6 rounded-2xl border border-slate-200 mb-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
                          <div className="sm:col-span-2 md:col-span-1">
                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Foco / Categoria</label>
@@ -709,6 +702,29 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                          <button type="submit" className="w-full md:w-auto ml-auto bg-[#0F214A] text-white px-6 py-3 rounded-xl font-black hover:bg-slate-800 transition-colors shadow-sm text-sm mt-2 md:mt-0">Guardar no Plano</button>
                       </div>
                    </form>
+
+                   {/* NOVO: BANCO DE EXERCÍCIOS VISÍVEL (CHIPS) */}
+                   <div className="mb-8 border-t border-slate-100 pt-6">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-3 flex items-center gap-1"><Dumbbell size={14}/> Banco Global da Clínica (Toque para preencher)</p>
+                      <div className="flex flex-wrap gap-2 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 max-h-48 overflow-y-auto custom-scrollbar">
+                         {bancoExerciciosGlobais.length > 0 ? (
+                             bancoExerciciosGlobais
+                               .filter(ex => !novoExercicio.musculo || ex.categoria === novoExercicio.musculo)
+                               .map(ex => (
+                                 <button 
+                                     key={ex.id}
+                                     type="button"
+                                     onClick={() => setNovoExercicio(prev => ({...prev, nome: ex.nome, musculo: ex.categoria || prev.musculo}))}
+                                     className="bg-white border border-blue-200 text-[#0F214A] hover:bg-[#00A1FF] hover:text-white hover:border-[#00A1FF] px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+                                 >
+                                     <Plus size={12} className="opacity-50"/> {ex.nome}
+                                 </button>
+                             ))
+                         ) : (
+                             <p className="text-xs font-bold text-slate-400">O banco global está vazio. Adicione exercícios acima para populá-lo.</p>
+                         )}
+                      </div>
+                   </div>
 
                    {Object.keys(planoAgrupado).length > 0 ? (
                        <div className="grid grid-cols-1 gap-6">
@@ -889,15 +905,12 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
           )}
         </div>
         
-        {/* INJEÇÃO DO MODAL PARA O PERFIL DO PACIENTE (Correção do Bug!) */}
+        {/* RENDERIZA O MODAL NO PERFIL DO PACIENTE */}
         {renderFormularioModal()}
       </div>
     );
   }
 
-  // ==============================================================================
-  // TELA 2: LISTA GERAL DE PACIENTES
-  // ==============================================================================
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
