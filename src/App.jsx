@@ -79,7 +79,7 @@ const TUTORIAL_STEPS_RECEP = [
 const TUTORIAL_STEPS_GESTOR = [
   { titulo: "Olá, Gestor!", texto: "Sou o Evo. O seu painel concentra as métricas essenciais e o fluxo de toda a clínica.", view: 'dashboard' },
   { titulo: "Faltas Críticas", texto: "No seu Início, clique no painel vermelho de Faltas Críticas para monitorar cancelamentos de última hora e justificar cobranças.", view: 'dashboard' },
-  { titulo: "Aba Diário", texto: "Criamos a aba 'Diário' para você acompanhar exatamente a mesma tela operacional que a Recepção utiliza no dia a dia.", view: 'diario' },
+  { titulo: "Aba Diário", texto: "Na sua Visão Geral de gestão tem um atalho 'Diário da Recepção' para você acompanhar a mesma tela que o balcão utiliza no dia a dia.", view: 'diario' },
   { titulo: "Controle da Equipe", texto: "Aprove usuários, force o reset de senhas e organize férias com a redistribuição automática da agenda.", view: 'equipe' }
 ];
 
@@ -235,9 +235,9 @@ function MainApp() {
 
   const hasAccess = (roles) => user && (roles.includes('any') || roles.includes(user.role));
 
+  // O diário desapareceu como aba lateral e migrou para dentro do menu do Gestor no Início
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
-    { id: 'diario', icon: ClipboardList, label: 'Diário (Recepção)', roles: ['gestor_clinico'] },
     { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
     { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
     { id: 'avaliacoes', icon: Award, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
@@ -258,6 +258,11 @@ function MainApp() {
 
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
+         {currentView === 'diario' && user?.role === 'gestor_clinico' && (
+             <button onClick={() => navegarPara('dashboard')} className="flex items-center text-slate-500 font-bold hover:text-[#00A1FF] transition-colors w-fit -mb-2">
+                 <ChevronLeft className="mr-1" size={18}/> Voltar para Gestão
+             </button>
+         )}
          <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight">
                 {currentView === 'diario' ? 'Diário Operacional' : 'Painel da Recepção'}
@@ -364,9 +369,6 @@ function MainApp() {
     const faltasCriticasMes = agendaMes.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
     const taxaCritica = totalMes > 0 ? ((faltasCriticasMes.length / totalMes) * 100).toFixed(1) : 0;
 
-    const isClinico = ['fisio', 'to', 'gestor_clinico'].includes(user?.role);
-    const isAdminOrRecepcao = ['recepcao', 'admin_fin', 'gestor_clinico'].includes(user?.role);
-    
     const exerciciosDaSessao = proximoAtendimento?.exerciciosPlanejados || [];
     const planoProximoPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
     const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoProximoPaciente;
@@ -383,114 +385,120 @@ function MainApp() {
               <p className="text-slate-500 font-medium">Bom dia, {primeiroNome}. Resumo das atividades de hoje.</p>
             </div>
 
-            {isClinico && (
-                <div className="space-y-6">
-                    {isAdminOrRecepcao && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas Pessoais</h3>}
-                    
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                        <div 
-                            className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]"
-                            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEndHandler}
-                        >
-                            {proximosPendentesMeus.length > 1 && (
+            <div className="space-y-6">
+                {user?.role === 'gestor_clinico' && <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><HeartPulse className="text-red-500"/> Suas Atividades Clínicas Pessoais</h3>}
+                
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <div 
+                        className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px]"
+                        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEndHandler}
+                    >
+                        {proximosPendentesMeus.length > 1 && (
+                            <>
+                              {carouselIdx > 0 && <button onClick={() => setCarouselIdx(c => c-1)} className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronLeft className="text-white"/></button>}
+                              {carouselIdx < proximosPendentesMeus.length - 1 && <button onClick={() => setCarouselIdx(c => c+1)} className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronRight className="text-white"/></button>}
+                            </>
+                        )}
+                        
+                        <div className="relative z-10 px-0 md:px-8">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal {proximosPendentesMeus.length > 1 && `(${carouselIdx + 1} de ${proximosPendentesMeus.length})`}</p>
+                            {proximoAtendimento ? (
                                 <>
-                                  {carouselIdx > 0 && <button onClick={() => setCarouselIdx(c => c-1)} className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronLeft className="text-white"/></button>}
-                                  {carouselIdx < proximosPendentesMeus.length - 1 && <button onClick={() => setCarouselIdx(c => c+1)} className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full items-center justify-center hover:bg-white/30 z-30 transition-colors cursor-pointer"><ChevronRight className="text-white"/></button>}
-                                </>
-                            )}
-                            
-                            <div className="relative z-10 px-0 md:px-8">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal {proximosPendentesMeus.length > 1 && `(${carouselIdx + 1} de ${proximosPendentesMeus.length})`}</p>
-                                {proximoAtendimento ? (
-                                    <>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <h2 className="text-4xl md:text-5xl font-black truncate">{proximoAtendimento.paciente}</h2>
-                                            {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Confirmado</span>}
-                                        </div>
-                                        <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
-                                            <span className={`px-3 py-1 rounded-xl font-black text-sm ${isHoraDaConsulta ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>
-                                                {!isHoje && <span className="mr-1 text-xs opacity-80">{new Date(proximoAtendimento.data).toLocaleDateString('pt-BR')} -</span>}
-                                                {proximoAtendimento.hora} {isHoraDaConsulta && '(Chegou a hora)'}
-                                            </span>
-                                            <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
-                                        </p>
-                                        
-                                        {listaExibicao.length > 0 && (
-                                            <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
-                                                <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
-                                                    {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada</> : <><Dumbbell size={14}/> Plano Geral</>}
-                                                </p>
-                                                <div className="space-y-2">
-                                                    {listaExibicao.map((ex, i) => (
-                                                        <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
-                                                            <span className="font-bold text-white tracking-wide truncate pr-2">{ex.nome}</span>
-                                                            <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-auto shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
-                                                                {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <h2 className="text-4xl md:text-5xl font-black truncate">{proximoAtendimento.paciente}</h2>
+                                        {proximoAtendimento.status === 'confirmado' && <span className="bg-[#00A1FF]/20 text-[#00A1FF] px-2 py-1 rounded border border-[#00A1FF]/30 text-[10px] font-black uppercase tracking-widest whitespace-nowrap">Confirmado</span>}
+                                    </div>
+                                    <p className="text-lg text-slate-300 font-medium flex flex-wrap items-center gap-3">
+                                        <span className={`px-3 py-1 rounded-xl font-black text-sm ${isHoraDaConsulta ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-[#00A1FF] text-white'}`}>
+                                            {!isHoje && <span className="mr-1 text-xs opacity-80">{new Date(proximoAtendimento.data).toLocaleDateString('pt-BR')} -</span>}
+                                            {proximoAtendimento.hora} {isHoraDaConsulta && '(Chegou a hora)'}
+                                        </span>
+                                        <span className="bg-white/10 px-3 py-1 rounded-xl font-bold text-sm text-slate-300 backdrop-blur-sm border border-white/10">{proximoAtendimento.local}</span>
+                                    </p>
+                                    
+                                    {listaExibicao.length > 0 && (
+                                        <div className={`mt-6 border rounded-2xl p-5 backdrop-blur-md max-w-lg mb-2 shadow-lg transition-all ${isSessaoModulada ? 'bg-gradient-to-r from-[#0F214A] to-[#0a1530] border-[#FFCC00]/40 ring-1 ring-[#FFCC00]/20' : 'bg-white/5 border-white/10'}`}>
+                                            <p className={`text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 ${isSessaoModulada ? 'text-[#FFCC00]' : 'text-slate-400'}`}>
+                                                {isSessaoModulada ? <><Target size={14} className="animate-pulse"/> Conduta Programada</> : <><Dumbbell size={14}/> Plano Geral</>}
+                                            </p>
+                                            <div className="space-y-2">
+                                                {listaExibicao.map((ex, i) => (
+                                                    <div key={ex.id || i} className="flex justify-between items-center text-sm border-b border-white/10 pb-2 last:border-0">
+                                                        <span className="font-bold text-white tracking-wide truncate pr-2">{ex.nome}</span>
+                                                        <span className={`font-black text-[10px] px-2 py-1 rounded-lg shrink-0 ml-auto shadow-sm ${isSessaoModulada ? 'bg-[#FFCC00] text-[#0F214A]' : 'bg-white/10 text-slate-300'}`}>
+                                                            {ex.series}x{ex.reps} {ex.carga ? `• ${ex.carga}` : ''}
+                                                        </span>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div><h2 className="text-3xl font-black mb-2 text-slate-400">Fila Limpa!</h2><p className="text-slate-500 font-medium">Você concluiu os seus atendimentos nos próximos dias.</p></div>
-                                )}
-                            </div>
-                            
-                            {proximoAtendimento && (
-                                <div className="relative z-10 mt-8 flex flex-wrap gap-3 px-0 md:px-8">
-                                    <button onClick={async () => {
-                                        if (isHoraDaConsulta && proximoAtendimento.status !== 'confirmado' && proximoAtendimento.status !== 'realizado') {
-                                            await updateDoc(doc(db, "agendamentos", proximoAtendimento.id), { status: 'confirmado' });
-                                        }
-                                        navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id });
-                                    }} className={`${isHoraDaConsulta ? 'bg-[#FFCC00] text-[#0F214A] hover:bg-yellow-400 shadow-[0_4px_20px_rgba(255,204,0,0.3)]' : 'bg-white text-[#0F214A] hover:bg-slate-200 shadow-lg'} px-8 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center gap-2 w-fit`}>
-                                        {isHoraDaConsulta ? 'Iniciar Atendimento' : 'Preparar Ficha'} <ArrowRight size={16}/>
-                                    </button>
-                                </div>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div><h2 className="text-3xl font-black mb-2 text-slate-400">Fila Limpa!</h2><p className="text-slate-500 font-medium">Você concluiu os seus atendimentos nos próximos dias.</p></div>
                             )}
-                            
-                            {proximosPendentesMeus.length > 1 && (
-                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 md:hidden z-20">
-                                    {proximosPendentesMeus.map((_, i) => (
-                                        <div key={i} className={`h-1.5 rounded-full transition-all ${i === carouselIdx ? 'w-4 bg-[#FFCC00]' : 'w-1.5 bg-white/30'}`} />
-                                    ))}
-                                </div>
-                            )}
-                            
-                            <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
                         </div>
                         
-                        <div className="flex flex-col gap-6">
-                            <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-[#00A1FF] cursor-pointer group">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14} className="group-hover:text-[#00A1FF] transition-colors"/> Suas Sessões Hoje</p>
-                                <h3 className="text-4xl font-black text-[#0F214A] group-hover:text-[#00A1FF] transition-colors">{minhaAgendaHoje.length}</h3>
-                                <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
-                                <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                        {proximoAtendimento && (
+                            <div className="relative z-10 mt-8 flex flex-wrap gap-3 px-0 md:px-8">
+                                <button onClick={async () => {
+                                    if (isHoraDaConsulta && proximoAtendimento.status !== 'confirmado' && proximoAtendimento.status !== 'realizado') {
+                                        await updateDoc(doc(db, "agendamentos", proximoAtendimento.id), { status: 'confirmado' });
+                                    }
+                                    navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id });
+                                }} className={`${isHoraDaConsulta ? 'bg-[#FFCC00] text-[#0F214A] hover:bg-yellow-400 shadow-[0_4px_20px_rgba(255,204,0,0.3)]' : 'bg-white text-[#0F214A] hover:bg-slate-200 shadow-lg'} px-8 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center gap-2 w-fit`}>
+                                    {isHoraDaConsulta ? 'Iniciar Atendimento' : 'Preparar Ficha'} <ArrowRight size={16}/>
+                                </button>
                             </div>
-                            <div onClick={() => navegarPara('pacientes')} className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-300 cursor-pointer group">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
-                                <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
-                                <p className="text-xs font-bold text-blue-600/70 mt-2 group-hover:text-blue-800 transition-colors">Sessões atrasadas sem assinatura</p>
+                        )}
+                        
+                        {proximosPendentesMeus.length > 1 && (
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 md:hidden z-20">
+                                {proximosPendentesMeus.map((_, i) => (
+                                    <div key={i} className={`h-1.5 rounded-full transition-all ${i === carouselIdx ? 'w-4 bg-[#FFCC00]' : 'w-1.5 bg-white/30'}`} />
+                                ))}
                             </div>
+                        )}
+                        
+                        <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
+                    </div>
+                    
+                    <div className="flex flex-col gap-6">
+                        <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-[#00A1FF] cursor-pointer group">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2"><Users size={14} className="group-hover:text-[#00A1FF] transition-colors"/> Suas Sessões Hoje</p>
+                            <h3 className="text-4xl font-black text-[#0F214A] group-hover:text-[#00A1FF] transition-colors">{minhaAgendaHoje.length}</h3>
+                            <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden"><div className="bg-[#00A1FF] h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${minhaAgendaHoje.length > 0 ? (minhasRealizadas / minhaAgendaHoje.length) * 100 : 0}%` }}></div></div>
+                            <p className="text-xs font-bold text-slate-400 mt-2">{minhasRealizadas} concluídos de {minhaAgendaHoje.length}</p>
+                        </div>
+                        <div onClick={() => navegarPara('pacientes')} className="bg-gradient-to-br from-blue-50 to-indigo-50/50 p-6 rounded-[32px] border border-blue-100 shadow-sm flex-1 flex flex-col justify-center transition-all hover:shadow-md hover:border-blue-300 cursor-pointer group">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[#00A1FF] mb-2 flex items-center gap-2"><CheckCircle2 size={14}/> Evoluções Pendentes</p>
+                            <h3 className="text-4xl font-black text-[#00A1FF]">{minhasAtrasadas}</h3>
+                            <p className="text-xs font-bold text-blue-600/70 mt-2 group-hover:text-blue-800 transition-colors">Sessões atrasadas sem assinatura</p>
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
 
             {user?.role === 'gestor_clinico' && (
                 <div className="pt-8 border-t border-slate-200 space-y-6">
                     <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão Geral (Gestão)</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    
+                    {/* Alteração: Os cartões ajustados para fluir com o novo Diário */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                         <div onClick={() => navegarPara('agenda')} className="cursor-pointer bg-slate-900 text-white rounded-[24px] p-6 shadow-md hover:shadow-lg transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendaGeralHoje.length}</h3></div>
-                        <div onClick={() => navegarPara('agenda')} className="cursor-pointer bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-[#00A1FF] transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando na Clínica</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
-                        <div onClick={() => navegarPara('financeiro')} className="cursor-pointer bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-500 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Receitas Realizadas</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
+                        <div onClick={() => navegarPara('agenda')} className="cursor-pointer bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-[#00A1FF] transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Aguardando (Clínica)</p><h3 className="text-3xl font-black text-slate-800">{geralPendentes}</h3></div>
+                        <div onClick={() => navegarPara('financeiro')} className="cursor-pointer bg-white border border-slate-200 rounded-[24px] p-6 shadow-sm hover:border-green-500 transition-all"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Receitas</p><h3 className="text-3xl font-black text-slate-800">{geralRealizadas}</h3></div>
                         
-                        <div onClick={() => setShowFaltasModal(true)} className="cursor-pointer bg-red-50 border border-red-200 rounded-[24px] p-6 shadow-sm hover:border-red-400 transition-all group">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-1 flex items-center justify-between">Faltas Críticas (Mês) <AlertTriangle size={14} className="group-hover:animate-bounce"/></p>
+                        <div onClick={() => setShowFaltasModal(true)} className="cursor-pointer bg-red-50 border border-red-200 rounded-[24px] p-6 shadow-sm hover:border-red-400 transition-all group flex flex-col justify-between">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-1 flex items-center justify-between">Faltas Críticas <AlertTriangle size={14} className="group-hover:animate-bounce"/></p>
                             <h3 className="text-3xl font-black text-red-600">{taxaCritica}%</h3>
-                            <p className="text-[9px] font-bold text-red-400 mt-1 uppercase">{faltasCriticasMes.length} ausências sem isenção</p>
+                            <p className="text-[9px] font-bold text-red-400 mt-1 uppercase">{faltasCriticasMes.length} ausências no mês</p>
+                        </div>
+
+                        <div onClick={() => navegarPara('diario')} className="cursor-pointer bg-blue-50 border border-blue-200 rounded-[24px] p-6 shadow-sm hover:border-blue-400 transition-all group flex flex-col justify-between">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1 flex items-center justify-between">Operacional <ClipboardList size={14} className="group-hover:scale-110 transition-transform"/></p>
+                            <h3 className="text-xl leading-none font-black text-[#0F214A] mt-1 mb-2">Diário da Recepção</h3>
+                            <p className="text-[9px] font-bold text-blue-400 mt-auto uppercase">Acessar balcão</p>
                         </div>
                     </div>
                 </div>
@@ -588,7 +596,6 @@ function MainApp() {
   return (
     <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#fdfbff] relative">
       
-      {/* NOVO TUTORIAL FLUTUANTE (Evo) */}
       {currentStep && (
           <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 w-[90%] md:w-80 bg-white rounded-[24px] shadow-[0_10px_40px_rgba(0,0,0,0.2)] border border-blue-100 z-[200] animate-in slide-in-from-bottom-10 p-5">
              <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
@@ -636,8 +643,7 @@ function MainApp() {
            </div>
         </header>
         
-        {/* 🔪 CIRURGIA: BLINDAGEM CONTRA A BARRA INFERIOR NO MOBILE */}
-        <div className={`p-4 md:p-8 min-h-full print:p-0 transition-all ${isModalActive ? 'pb-6' : 'pb-32'} md:pb-8 flex flex-col`}>
+        <div className={`p-4 md:p-8 min-h-full print:p-0 transition-all ${isModalActive ? 'pb-10' : 'pb-44'} md:pb-8 flex flex-col`}>
            <div className="max-w-[1600px] mx-auto w-full">
               {currentView === 'dashboard' || currentView === 'diario' ? renderDashboard() : null}
               {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} setModalActive={setIsModalActive} />}
