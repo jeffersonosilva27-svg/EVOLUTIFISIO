@@ -15,8 +15,9 @@ import Financeiro from './views/Financeiro';
 import Avaliacoes from './views/Avaliacoes';
 import Equipe from './views/Equipe';
 
-// CONSTANTE DE SEGURANÇA MESTRA
+// CONSTANTES GLOBAIS DE CONFIGURAÇÃO (Single Source of Truth)
 const SUPER_GESTOR_REGISTRO = "329099-F";
+const APP_VERSION = "v1.4.8";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -318,7 +319,6 @@ function MainApp() {
 
   if (!user) return (
     <div className="min-h-screen flex bg-white font-sans animate-in fade-in duration-500">
-      {/* Lado Esquerdo - Branding Contextual (Split-Screen) */}
       <div className="hidden lg:flex flex-col justify-center w-1/2 bg-[#0F214A] p-16 text-white relative overflow-hidden">
          <div className="relative z-10 max-w-lg animate-in slide-in-from-left duration-700">
             <div className="flex items-center gap-3 mb-8">
@@ -334,7 +334,6 @@ function MainApp() {
          <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-[#00A1FF] rounded-full blur-[150px] opacity-20"></div>
       </div>
       
-      {/* Lado Direito - Formulário de Login */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-20 relative bg-white">
          <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2 text-[#0F214A]">
             <HeartPulse size={28} className="text-[#00A1FF]" />
@@ -360,6 +359,10 @@ function MainApp() {
                 {loading ? <Loader2 className="animate-spin" /> : <>Acessar Plataforma <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform"/></>}
              </button>
            </form>
+
+           <div className="mt-8 text-center lg:text-left text-[10px] font-black text-slate-300 uppercase tracking-widest">
+               Evoluti Fisio {APP_VERSION}
+           </div>
          </div>
       </div>
     </div>
@@ -377,12 +380,15 @@ function MainApp() {
           ))}
         </nav>
         
-        <button onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} className="p-4 flex flex-col items-center gap-1 text-slate-500 hover:text-[#00A1FF] transition-colors">
+        {/* BOTÃO DE EDIÇÃO DE PERFIL PRÓPRIO REPOSICIONADO PARA PREENCHER ESPAÇO */}
+        <button onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} className="p-4 flex flex-col items-center gap-1 text-slate-500 hover:text-[#00A1FF] transition-colors mt-auto">
             <UserCog size={22}/>
             <span className={`text-[8px] font-black uppercase ${!isSidebarOpen ? 'hidden' : 'block'}`}>Meu Perfil</span>
         </button>
 
-        <button onClick={fazerLogout} className="p-6 text-red-400 hover:text-red-600 transition-colors"><LogOut size={20}/></button>
+        <div className="pb-4 pt-2 text-center text-[9px] font-black text-slate-300 tracking-widest whitespace-nowrap overflow-hidden">
+            <span className={!isSidebarOpen ? 'hidden' : 'inline'}>EVOLUTI </span>{APP_VERSION}
+        </div>
       </aside>
       
       <main className="flex-1 h-full overflow-y-auto relative">
@@ -393,7 +399,18 @@ function MainApp() {
                   <p className="text-xs font-black text-[#0F214A] leading-none">{user.nome}</p>
                   <p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{isSuperGestor ? 'Super Gestor' : user.role.replace('_', ' ')}</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer" onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }}>{user.nome.charAt(0)}</div>
+              <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer hover:scale-105 transition-transform" onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} title="Editar Meu Perfil">
+                  {user.nome.charAt(0)}
+              </div>
+              
+              {/* NOVO POSICIONAMENTO DO BOTÃO LOGOUT */}
+              <button 
+                onClick={fazerLogout} 
+                className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 rounded-full transition-colors ml-1" 
+                title="Sair do Sistema"
+              >
+                  <LogOut size={16}/>
+              </button>
            </div>
         </header>
 
