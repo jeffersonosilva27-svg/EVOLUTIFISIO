@@ -8,11 +8,12 @@ import {
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where, writeBatch, getDocs } from 'firebase/firestore';
 
+// PATCH v1.4.9: Adição das categorias "Funcionais" e "Recursos Terapêuticos"
 const GRUPOS_MUSCULARES = [
   'Cervical', 'Ombros / Manguito', 'Dorsal / Escápulas', 'Peitoral', 
   'Core / Abdômen', 'Lombar', 'Pelve / Quadril', 'Coxas / Isquiotibiais', 
   'Joelhos', 'Panturrilhas / Tornozelos', 'Membros Superiores (Geral)',
-  'Respiratório / TMI'
+  'Respiratório / TMI', 'Funcionais', 'Recursos Terapêuticos'
 ];
 
 const obterDataLocalISO = (data) => {
@@ -32,7 +33,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const [mostrarForm, setMostrarForm] = useState(false);
   const [pacienteSelecionado, setPacienteSelecionado] = useState(null);
   const [tabAtiva, setTabAtiva] = useState('historico'); 
-  const [modoVisualizacao, setModoVisualizacao] = useState('grid'); // 'grid' | 'list'
+  const [modoVisualizacao, setModoVisualizacao] = useState('grid');
   
   const [evolucoes, setEvolucoes] = useState([]);
   const [novoSoap, setNovoSoap] = useState('');
@@ -52,11 +53,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [salvandoPaciente, setSalvandoPaciente] = useState(false);
   
-  const [analiseIA, setAnaliseIA] = useState('');
-  const [carregandoIA, setCarregandoIA] = useState(false);
-  const [exameProcessando, setExameProcessando] = useState(false);
-  const [laudoExame, setLaudoExame] = useState('');
-
   const [planoTratamento, setPlanoTratamento] = useState([]);
   const [novoExercicio, setNovoExercicio] = useState({ musculo: '', nome: '', carga: '', series: '3', reps: '10' });
   const [bancoExerciciosGlobais, setBancoExerciciosGlobais] = useState([]);
@@ -666,25 +662,25 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                </select>
                              </div>
                              <div className="sm:col-span-2 md:col-span-2 relative">
-                               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Exercício (Autocompletar)</label>
+                               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Exercício / Recurso (Autocompletar)</label>
                                <input required type="text" list="banco-exercicios-lista" placeholder="Digite para buscar na clínica..." className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.nome} onChange={e => { const val = e.target.value; let nCat = novoExercicio.musculo; const sugestao = bancoExerciciosGlobais.find(x => x.nome === val); if (sugestao && !nCat) nCat = sugestao.categoria; setNovoExercicio({...novoExercicio, nome: val, musculo: nCat}); }} />
                                <datalist id="banco-exercicios-lista">
                                   {bancoExerciciosGlobais.filter(ex => !novoExercicio.musculo || ex.categoria === novoExercicio.musculo).map(ex => <option key={ex.id} value={ex.nome} />)}
                                </datalist>
                              </div>
                              <div className="sm:col-span-2 md:col-span-1">
-                               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Carga (Opcional)</label>
-                               <input type="text" placeholder="Ex: 10kg, Azul" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.carga} onChange={e => setNovoExercicio({...novoExercicio, carga: e.target.value})}/>
+                               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Carga/Dose (Opcional)</label>
+                               <input type="text" placeholder="Ex: 10kg, 15mA, Azul" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-[#00A1FF] font-bold text-slate-700 text-sm" value={novoExercicio.carga} onChange={e => setNovoExercicio({...novoExercicio, carga: e.target.value})}/>
                              </div>
                           </div>
                           <div className="flex flex-wrap md:flex-nowrap gap-3 md:gap-4 mt-4 items-center">
                              <div className="flex flex-1 items-center justify-between gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
-                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Séries:</label>
-                               <input type="number" min="1" className="w-12 text-right font-black outline-none bg-transparent text-[#0F214A]" value={novoExercicio.series} onChange={e => setNovoExercicio({...novoExercicio, series: e.target.value})}/>
+                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Séries/Tempo:</label>
+                               <input type="text" className="w-16 text-right font-black outline-none bg-transparent text-[#0F214A]" value={novoExercicio.series} onChange={e => setNovoExercicio({...novoExercicio, series: e.target.value})}/>
                              </div>
                              <span className="text-slate-400 font-black hidden md:block">X</span>
                              <div className="flex flex-1 items-center justify-between gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
-                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Reps:</label>
+                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Reps/Freq:</label>
                                <input type="text" className="w-16 text-right font-black outline-none bg-transparent text-[#0F214A]" value={novoExercicio.reps} onChange={e => setNovoExercicio({...novoExercicio, reps: e.target.value})}/>
                              </div>
                              <button type="submit" className="w-full md:w-auto ml-auto bg-[#0F214A] text-white px-6 py-3 rounded-xl font-black hover:bg-slate-800 transition-colors shadow-sm text-sm mt-2 md:mt-0">Guardar no Plano</button>
@@ -719,8 +715,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                                <div className="flex-1 min-w-0">
                                                   <p className="font-bold text-slate-800 leading-tight truncate">{ex.nome}</p>
                                                   <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] font-bold text-slate-500">
-                                                     {ex.carga && <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">Carga: {ex.carga}</span>}
-                                                     <span>{ex.series} séries de {ex.reps}</span>
+                                                     {ex.carga && <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">Dose/Carga: {ex.carga}</span>}
+                                                     <span>{ex.series} x {ex.reps}</span>
                                                   </div>
                                                </div>
                                                <button onClick={() => removerExercicio(ex.id)} className="text-slate-300 hover:text-red-500 transition-all p-2 bg-slate-50 hover:bg-red-50 rounded-lg shrink-0"><Trash2 size={16}/></button>
@@ -852,7 +848,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                  <Search className="text-slate-400 mr-2 md:mr-3" size={20}/>
                  <input placeholder="Procurar paciente pelo nome..." className="flex-1 outline-none text-slate-700 bg-transparent font-bold text-sm md:text-base" value={termoBusca} onChange={e => setTermoBusca(e.target.value)} />
                </div>
-               {/* Alternador de Visualização (Grid/List) */}
                <div className="flex bg-white p-1.5 rounded-[24px] border border-slate-200 shadow-sm shrink-0 items-center justify-center gap-1">
                   <button onClick={() => setModoVisualizacao('grid')} className={`p-3 rounded-2xl transition-all ${modoVisualizacao === 'grid' ? 'bg-[#e5f5ff] text-[#00A1FF]' : 'text-slate-400 hover:bg-slate-50'}`} title="Visualização em Grade">
                      <LayoutGrid size={20}/>
@@ -863,7 +858,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                </div>
             </div>
 
-            {/* Container Dinâmico (Grid vs List) */}
             <div className={modoVisualizacao === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
               {filtrados.map(p => {
                  const linkWhatsApp = `https://wa.me/${(p.whatsapp || '').replace(/\D/g, '')}`;
