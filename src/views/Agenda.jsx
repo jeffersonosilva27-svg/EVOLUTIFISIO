@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight,
-  Layers, Loader2, Copy, User, MapPin, Sparkles, FileText, AlertTriangle, Ban, CheckCircle2, Lightbulb, Dumbbell
+  Layers, Loader2, Copy, User, MapPin, Sparkles, FileText, AlertTriangle, Ban, CheckCircle2, Lightbulb, Dumbbell, Target, DollarSign
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { temAcessoClinica } from '../App';
 
 const LOCAIS = [
   'Sala 701', 'Sala 702', 'Sala 703', 'Sala 704', 'Sala 705', 
@@ -35,9 +36,11 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
   const [mostrandoConduta, setMostrandoConduta] = useState(false);
   const [carregandoIA, setCarregandoIA] = useState(false);
   
+  // PATCH 4.1: Adicionado valorSessao no estado inicial
   const [form, setForm] = useState({ 
     pacienteId: '', pacienteNome: '', tipo: 'Atendimento', local: '', 
-    data: obterDataLocalISO(new Date()), hora: '08:00', profissionalId: '', profissionalNome: '' 
+    data: obterDataLocalISO(new Date()), hora: '08:00', profissionalId: '', profissionalNome: '', clinicaVinculo: '',
+    valorSessao: '' 
   });
 
   const [isLote, setIsLote] = useState(false);
@@ -49,18 +52,28 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
   useEffect(() => {
     if (!user) return;
-    const unsubAgenda = onSnapshot(collection(db, "agendamentos"), snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     
-    // Capturando a Clínica de cada Paciente para as bolinhas
-    const unsubPac = onSnapshot(collection(db, "pacientes"), snap => setPacientes(snap.docs.map(d => ({ 
-        id: d.id, 
-        nome: d.data()?.nome || 'Sem nome',
-        clinica: d.data()?.clinica || 'Vida' 
-    }))));
+    const unsubAgenda = onSnapshot(collection(db, "agendamentos"), snap => {
+      const ags = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAgendamentos(ags.filter(a => temAcessoClinica(user.clinicasAcesso, a.clinicaVinculo)));
+    });
+
+    const unsubPac = onSnapshot(collection(db, "pacientes"), snap => {
+      const pacs = snap.docs.map(d => ({ id: d.id, nome: d.data()?.nome || 'Sem nome', clinicaVinculo: d.data()?.clinicaVinculo }));
+      setPacientes(pacs.filter(p => temAcessoClinica(user.clinicasAcesso, p.clinicaVinculo)));
+    });
 
     const unsubProf = onSnapshot(collection(db, "profissionais"), snap => {
-      setProfissionais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.nome && p.categoriaBase !== 'recepcao' && p.role !== 'recepcao'));
+      const profs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setProfissionais(profs.filter(p => 
+        p.nome && 
+        p.categoriaBase !== 'recepcao' && 
+        p.role !== 'recepcao' && 
+        p.status !== 'oculto' && 
+        temAcessoClinica(user.clinicasAcesso, p.clinicasAcesso)
+      ));
     });
+
     return () => { unsubAgenda(); unsubPac(); unsubProf(); };
   }, [user]);
 
@@ -68,30 +81,15 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
     return agendamentos.find(a => a.id !== idIgnorar && a.data === d && a.hora === h && a.status !== 'cancelado' && (a.profissionalId === pId || (a.local === l && !['Atendimento Domiciliar', 'Ginásio Clínico', 'Atendimento Hospitalar'].includes(l))));
   };
 
-  const getSalasRecomendadas = () => {
-    const prof = profissionais.find(p => p.id === form.profissionalId);
-    if (!prof) return [];
-    if (prof.categoriaBase === 'fisio') return ['Sala 701', 'Sala 703'];
-    if (prof.categoriaBase === 'to') return ['Sala 704', 'Sala 705'];
-    return [];
-  };
-
-  const verificarUsoSala702 = () => {
-    if (form.local !== 'Sala 702') return true;
-    const recomendadas = getSalasRecomendadas();
-    const ocupadas = agendamentos.filter(a => a.data === form.data && a.hora === form.hora && a.status !== 'cancelado').map(a => a.local);
-    const temDisponivel = recomendadas.some(sala => !ocupadas.includes(sala));
-    
-    if (temDisponivel) {
-      return window.confirm("Atenção: Existem salas preferenciais disponíveis. A Sala 702 deve ser usada apenas como último recurso. Deseja prosseguir mesmo assim?");
-    }
-    return true;
-  };
-
   const abrirFormEdicao = (agend) => {
     setIsLote(false);
     setAgendamentoEditando(agend.id);
-    setForm({ pacienteId: agend.pacienteId, pacienteNome: agend.paciente, tipo: agend.tipo, data: agend.data, hora: agend.hora, local: agend.local, profissionalId: agend.profissionalId, profissionalNome: agend.profissional });
+    setForm({ 
+        pacienteId: agend.pacienteId, pacienteNome: agend.paciente, tipo: agend.tipo, 
+        data: agend.data, hora: agend.hora, local: agend.local, profissionalId: agend.profissionalId, 
+        profissionalNome: agend.profissional, clinicaVinculo: agend.clinicaVinculo,
+        valorSessao: agend.valorSessao || '' // PATCH 4.1: Recupera o valor se existir
+    });
     setMostrarForm(true);
   };
 
@@ -112,20 +110,30 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
   const processarAgendamento = async (e) => {
     e.preventDefault();
-    if (!verificarUsoSala702()) return;
-
     setCarregandoIA(true);
     
+    const pacSelecionado = pacientes.find(p => p.id === form.pacienteId);
+    const clinicaDoPac = Array.isArray(pacSelecionado?.clinicaVinculo) ? pacSelecionado.clinicaVinculo[0] : pacSelecionado?.clinicaVinculo;
+    
+    // Filtra o valorSessao para garantir que envia null/vazio se não foi preenchido
+    const payload = { 
+        ...form, 
+        paciente: form.pacienteNome, 
+        profissional: form.profissionalNome, 
+        clinicaVinculo: clinicaDoPac,
+        valorSessao: form.valorSessao ? String(form.valorSessao) : '' 
+    };
+
     try {
       if (agendamentoEditando) {
         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local, agendamentoEditando);
-        if (conflito) { alert("Conflito detectado! Sala ou Profissional já ocupados."); setCarregandoIA(false); return; }
-        await updateDoc(doc(db, "agendamentos", agendamentoEditando), { ...form, paciente: form.pacienteNome, profissional: form.profissionalNome });
+        if (conflito) { alert("Conflito detectado!"); setCarregandoIA(false); return; }
+        await updateDoc(doc(db, "agendamentos", agendamentoEditando), payload);
         alert("Alteração guardada!");
       } else if (!isLote) {
         const conflito = verificarConflito(form.data, form.hora, form.profissionalId, form.local);
-        if (conflito) { alert("Conflito detectado! Sala ou Profissional já ocupados."); setCarregandoIA(false); return; }
-        await addDoc(collection(db, "agendamentos"), { ...form, paciente: form.pacienteNome, profissional: form.profissionalNome, status: 'pendente' });
+        if (conflito) { alert("Conflito detectado!"); setCarregandoIA(false); return; }
+        await addDoc(collection(db, "agendamentos"), { ...payload, status: 'pendente' });
         alert("Agendamento criado!");
       } else {
         if (loteConfig.diasSemana.length === 0) { alert("Selecione pelo menos um dia da semana."); setCarregandoIA(false); return; }
@@ -139,10 +147,8 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
             const dIso = obterDataLocalISO(dataAtual);
             if (!verificarConflito(dIso, form.hora, form.profissionalId, form.local)) {
               listaNovos.push({
-                ...form,
+                ...payload,
                 data: dIso,
-                paciente: form.pacienteNome,
-                profissional: form.profissionalNome,
                 status: 'pendente',
                 loteInfo: `${sessoesCriadas + 1}/${loteConfig.quantidade}`
               });
@@ -190,7 +196,7 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
           <button onClick={() => setDataSelecionada(new Date())} className="px-5 py-2 font-black text-[11px] uppercase">Hoje</button>
           <button onClick={() => { const d = new Date(dataSelecionada); d.setDate(d.getDate()+7); setDataSelecionada(d); }} className="p-2 hover:bg-white rounded-xl transition-colors"><ChevronRight size={18}/></button>
         </div>
-        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje}); setIsLote(false); setMostrarForm(true); }} className="w-full md:w-auto bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-100"><Plus size={18}/> Novo Agendamento</button>
+        <button onClick={() => { setAgendamentoEditando(null); setForm({...form, data: hoje, valorSessao: ''}); setIsLote(false); setMostrarForm(true); }} className="w-full md:w-auto bg-[#00A1FF] text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-100"><Plus size={18}/> Novo Agendamento</button>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 flex-1 flex flex-col shadow-sm min-h-0 overflow-hidden">
@@ -226,11 +232,6 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                           const isRealizado = ag.status === 'realizado';
                           const isConfirmado = ag.status === 'confirmado';
                           
-                          // Puxar os dados do paciente para ver a Clínica
-                          const pacDados = pacientes.find(p => p.id === ag.pacienteId);
-                          const isReabtech = pacDados?.clinica === 'Reabtech';
-                          
-                          // Lógica para Bolinha Vermelha (Sessão já ocorreu, mas sem evolução 'realizado')
                           const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
                           const dataAtualStr = obterDataLocalISO(new Date());
                           const isSessaoPassada = ag.data < dataAtualStr || (ag.data === dataAtualStr && getMinutos(ag.hora) < minutosAtuais);
@@ -238,27 +239,20 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
 
                           const cardClasses = isCancelado 
                             ? 'bg-orange-50 border-orange-200 opacity-70'
-                            : isRealizado ? 'bg-green-50 border-green-200 opacity-80'
                             : isConfirmado ? 'bg-[#e5f5ff] border-[#00A1FF] ring-1 ring-[#00A1FF]/30'
                             : 'bg-white border-blue-100 hover:border-[#00A1FF] hover:shadow-md';
 
                           return (
                             <div key={ag.id} onClick={() => abrirFormEdicao(ag)} className={`p-2 mb-1.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between min-h-[60px] relative animate-in fade-in zoom-in-95 ${cardClasses}`}>
-                               
-                               {/* Luz Vermelha Piscante de Pendência (Canto Superior Direito) */}
                                {isSemEvolucao && <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" title="Pendente de Evolução SOAP"></div>}
+                               {isRealizado && <div className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" title="Atendimento Realizado e Assinado"></div>}
                                
                                <div className="flex justify-between items-start">
-                                  <div className="flex items-center gap-1.5">
-                                      {/* Bolinha Elegante da Clínica (Canto Superior Esquerdo ao lado da hora) */}
-                                      <div className={`w-2 h-2 rounded-full shadow-sm ${isReabtech ? 'bg-blue-500' : 'bg-purple-500'}`} title={`Clínica ${isReabtech ? 'Reabtech' : 'Vida'}`}></div>
-                                      
-                                      <span className={`text-[10px] font-black ${isSemEvolucao ? 'text-slate-800' : 'text-slate-700'}`}>{ag.hora}</span>
-                                  </div>
-                                  {ag.exerciciosPlanejados?.length > 0 && <Lightbulb size={12} className={`text-amber-500 fill-amber-400/30 shrink-0 ${isSemEvolucao ? 'mr-3' : ''}`} title="Conduta Planejada" />}
+                                  <span className={`text-[10px] font-black ${isSemEvolucao ? 'text-slate-800' : 'text-slate-700'}`}>{ag.hora}</span>
+                                  {ag.exerciciosPlanejados?.length > 0 && <Lightbulb size={12} className={`text-amber-500 fill-amber-400/30 shrink-0 ${(isSemEvolucao || isRealizado) ? 'mr-3' : ''}`} />}
                                </div>
-                               <div className={`font-black text-[10px] truncate uppercase mt-1 ${isSemEvolucao ? 'text-slate-900' : 'text-[#0F214A]'}`}>{ag.paciente}</div>
-                               <div className="text-[7px] font-black text-slate-400 uppercase truncate mt-auto"><MapPin size={8} className="inline mr-0.5"/> {ag.local}</div>
+                               <div className={`font-black text-[10px] truncate uppercase ${isSemEvolucao ? 'text-slate-900' : 'text-[#0F214A]'}`}>{ag.paciente}</div>
+                               <div className="text-[7px] font-black text-slate-400 uppercase truncate"><MapPin size={8} className="inline mr-0.5"/> {ag.local}</div>
                             </div>
                           );
                         })}
@@ -343,21 +337,22 @@ export default function Agenda({ user, hasAccess, navegarPara, setModalActive })
                           <option value="">Fisio / TO...</option>
                           {profissionaisOrdenados.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                       </select>
-                      
-                      <select required className={`p-3.5 rounded-2xl font-bold text-sm outline-none border-2 truncate ${getSalasRecomendadas().includes(form.local) ? 'border-green-200 bg-green-50 focus:border-green-400' : 'bg-slate-50 border-transparent focus:border-[#00A1FF] focus:bg-white'}`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
+                      <select required className={`p-3.5 bg-slate-50 rounded-2xl font-bold text-sm outline-none border-2 border-transparent focus:border-[#00A1FF] focus:bg-white`} value={form.local} onChange={e => setForm({...form, local: e.target.value})}>
                           <option value="">Sala / Local...</option>
-                          {LOCAIS.map(l => <option key={l} value={l}>{l} {getSalasRecomendadas().includes(l) ? '⭐' : ''} {l === 'Sala 702' ? '(Reserva)' : ''}</option>)}
+                          {LOCAIS.map(l => <option key={l} value={l}>{l}</option>)}
                       </select>
                     </div>
-                    
-                    {form.profissionalId && getSalasRecomendadas().length > 0 && (
-                      <div className="px-3 py-2 bg-blue-50 rounded-lg text-[10px] font-bold text-blue-700 flex items-center gap-2">
-                        <MapPin size={12} className="shrink-0"/> Sugestão: {getSalasRecomendadas().join(' ou ')}. Use a 702 apenas se necessário.
-                      </div>
-                    )}
 
                     <div className="p-5 bg-slate-50 rounded-3xl space-y-4 border border-slate-100">
-                        <div className="grid grid-cols-2 gap-3">
+                        {/* PATCH 4.1: Campo de Valor da Sessão incluído aqui */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-4 border-b border-slate-200">
+                            <div className="space-y-1 sm:col-span-3">
+                              <label className="text-[9px] font-black text-[#00A1FF] uppercase ml-1 flex items-center gap-1"><DollarSign size={12}/> Valor Personalizado (R$) - Opcional</label>
+                              <input type="number" step="0.01" placeholder="Em branco = Valor Base do Paciente" className="p-3 bg-white rounded-xl font-bold text-sm w-full border border-blue-100 focus:border-[#00A1FF] focus:ring-2 focus:ring-blue-50 outline-none transition-all placeholder:text-slate-300" value={form.valorSessao} onChange={e => setForm({...form, valorSessao: e.target.value})} title="Preencha apenas se quiser cobrar um valor diferente do habitual nesta sessão." />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-2">
                             <div className="space-y-1">
                               <label className="text-[9px] font-black text-slate-400 uppercase ml-1">{isLote ? 'DATA INÍCIO' : 'DATA'}</label>
                               <input type="date" required className="p-3 bg-white rounded-xl font-bold text-sm w-full border border-slate-200" value={form.data} onChange={e => setForm({...form, data: e.target.value})} />
