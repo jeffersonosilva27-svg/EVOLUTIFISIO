@@ -3,7 +3,7 @@ import {
   HeartPulse, LayoutDashboard, Calendar, Users, 
   DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
   CheckCircle2, ArrowRight, Lock, ChevronLeft, 
-  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog
+  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog, BellRing, PhoneForwarded
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -17,7 +17,7 @@ import Equipe from './views/Equipe';
 
 // CONSTANTES GLOBAIS DE CONFIGURAÇÃO (Single Source of Truth)
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.4.8";
+const APP_VERSION = "v1.5.0";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -39,7 +39,7 @@ class ErrorBoundary extends Component {
   }
 }
 
-// SERVIÇO DE LOGGING PERMANENTE
+// SERVIÇOS DO SISTEMA
 export const registrarLog = async (usuario, acao, detalhes) => {
   if (!usuario) return;
   try {
@@ -52,6 +52,19 @@ export const registrarLog = async (usuario, acao, detalhes) => {
       timestamp: new Date().toISOString()
     });
   } catch (e) { console.error("Erro ao gravar log:", e); }
+};
+
+const pedirPermissaoNotificacao = async () => {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+    await Notification.requestPermission();
+  }
+};
+
+const dispararPush = (titulo, corpo) => {
+  if (Notification.permission === "granted") {
+    new Notification(titulo, { body: corpo, icon: '/favicon.svg' });
+  }
 };
 
 const obterDataLocalISO = (data) => {
@@ -97,6 +110,7 @@ function MainApp() {
   const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
   const [logsSistema, setLogsSistema] = useState([]);
   const [equipeCompleta, setEquipeCompleta] = useState([]);
+  const [estoqueGeral, setEstoqueGeral] = useState([]); // Novo Estado para a Recepção
 
   const [isModalActive, setIsModalActive] = useState(false);
   const [showFaltasModal, setShowFaltasModal] = useState(false);
@@ -177,30 +191,191 @@ function MainApp() {
 
   useEffect(() => {
     if (user) {
-      onSnapshot(query(collection(db, "pacientes"), orderBy("nome", "asc")), (snap) => {
+      pedirPermissaoNotificacao();
+      
+      const unsubPac = onSnapshot(query(collection(db, "pacientes"), orderBy("nome", "asc")), (snap) => {
           setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => temAcessoClinica(user.clinicasAcesso, p.clinicaVinculo)));
       });
-      onSnapshot(collection(db, "agendamentos"), (snap) => {
+      const unsubAg = onSnapshot(collection(db, "agendamentos"), (snap) => {
         setAgendamentosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => temAcessoClinica(user.clinicasAcesso, a.clinicaVinculo)));
       });
-      onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
+      const unsubEx = onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
         setExerciciosGlobais(snap.docs.map(d => ({ id: d.id, pacienteId: d.ref.parent.parent.id, ...d.data() })));
       });
 
+      let unsubLogs = () => {};
+      let unsubProfis = () => {};
+      let unsubEstoque = () => {};
+
+      // Carrega logs apenas para super gestor
       if (isSuperGestor) {
-        onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)), (snap) => {
+        unsubLogs = onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)), (snap) => {
             setLogsSistema(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-        onSnapshot(collection(db, "profissionais"), (snap) => {
+      }
+
+      // Carrega equipe e estoque para Gestão e Recepção
+      if (isSuperGestor || user.role === 'recepcao' || user.role === 'gestor_clinico') {
+        unsubProfis = onSnapshot(collection(db, "profissionais"), (snap) => {
             setEquipeCompleta(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
+        unsubEstoque = onSnapshot(collection(db, "estoque"), (snap) => {
+            setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => temAcessoClinica(user.clinicasAcesso, e.clinicaVinculo)));
+        });
       }
+
+      return () => { unsubPac(); unsubAg(); unsubEx(); unsubLogs(); unsubProfis(); unsubEstoque(); };
     }
   }, [user, isSuperGestor]);
 
   const hasAccess = (roles) => user && (roles.includes('any') || roles.includes(user.role));
 
+  // --- MÓDULO 1: DASHBOARD DA RECEPÇÃO ---
+  const renderRecepcaoDashboard = () => {
+      const hojeIso = obterDataLocalISO(new Date());
+      const agendaHoje = agendamentosGlobais.filter(a => a.data === hojeIso).sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
+      
+      const ativosHoje = agendaHoje.filter(a => a.status !== 'cancelado' && a.status !== 'realizado');
+      const realizadosHoje = agendaHoje.filter(a => a.status === 'realizado');
+      const canceladosHoje = agendaHoje.filter(a => a.status === 'cancelado');
+      const estoqueBaixo = estoqueGeral.filter(e => e.quantidade <= 5);
+
+      const anunciarChegada = async (ag) => {
+          // Marca visualmente que o paciente chegou
+          try {
+              await updateDoc(doc(db, "agendamentos", ag.id), { statusRecepcao: 'aguardando' });
+              
+              // Localiza o profissional para enviar mensagem
+              const prof = equipeCompleta.find(p => p.nome === ag.profissional || p.id === ag.profissionalId);
+              
+              // Notificação no Navegador
+              dispararPush("Paciente Aguardando", `O paciente ${ag.paciente} já está na recepção para o atendimento das ${ag.hora}.`);
+              
+              // Disparo via WhatsApp
+              const numero = prof?.whatsapp ? prof.whatsapp.replace(/\D/g, '') : '';
+              if (numero) {
+                  const texto = encodeURIComponent(`Olá ${ag.profissional.split(' ')[0]}, o paciente *${ag.paciente}* acabou de chegar na recepção para a sessão das ${ag.hora}.`);
+                  window.open(`https://wa.me/${numero}?text=${texto}`, '_blank');
+              } else {
+                  alert(`O profissional ${ag.profissional} não possui um número de WhatsApp cadastrado no sistema.`);
+              }
+          } catch (e) {
+              alert("Erro ao sinalizar chegada.");
+          }
+      };
+
+      return (
+          <div className="space-y-6 animate-in fade-in duration-500">
+             <header>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Centro de Recepção</h1>
+                <p className="text-slate-500 font-medium">Logística de pacientes e organização da clínica.</p>
+             </header>
+
+             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                 {/* COLUNA ESQUERDA: ALERTAS E ESTOQUE */}
+                 <div className="lg:col-span-1 space-y-6 flex flex-col">
+                     {/* Faltas e Cancelamentos */}
+                     <div className="bg-red-50 border border-red-200 rounded-[24px] p-6 shadow-sm flex-1">
+                         <h3 className="font-black text-red-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide">
+                             <AlertTriangle size={18}/> Alertas do Dia
+                         </h3>
+                         {canceladosHoje.length > 0 ? (
+                             <div className="space-y-3">
+                                 {canceladosHoje.map(ag => (
+                                     <div key={ag.id} className="bg-white border border-red-100 p-3 rounded-xl shadow-sm">
+                                         <p className="text-xs font-black text-slate-800 line-through truncate">{ag.paciente}</p>
+                                         <p className="text-[10px] font-bold text-red-600 uppercase mt-1">{ag.hora} • {ag.motivoCancelamento || 'Cancelado'}</p>
+                                     </div>
+                                 ))}
+                             </div>
+                         ) : (
+                             <p className="text-xs font-bold text-red-400">Nenhum cancelamento ou falta registrada hoje.</p>
+                         )}
+                     </div>
+
+                     {/* Alertas de Estoque Crítico */}
+                     <div className="bg-orange-50 border border-orange-200 rounded-[24px] p-6 shadow-sm flex-1">
+                         <h3 className="font-black text-orange-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide">
+                             <Package size={18}/> Estoque Crítico
+                         </h3>
+                         {estoqueBaixo.length > 0 ? (
+                             <div className="space-y-3">
+                                 {estoqueBaixo.map(item => (
+                                     <div key={item.id} className="flex justify-between items-center bg-white border border-orange-100 p-3 rounded-xl shadow-sm">
+                                         <p className="text-xs font-black text-slate-800 truncate pr-2">{item.nome}</p>
+                                         <span className="text-[10px] font-black bg-orange-100 text-orange-700 px-2 py-1 rounded whitespace-nowrap">Qtd: {item.quantidade}</span>
+                                     </div>
+                                 ))}
+                             </div>
+                         ) : (
+                             <p className="text-xs font-bold text-orange-400">Todos os materiais estão com nível de estoque adequado.</p>
+                         )}
+                     </div>
+                 </div>
+
+                 {/* COLUNA CENTRAL: LINHA DO TEMPO DE PACIENTES */}
+                 <div className="lg:col-span-3 bg-white rounded-[32px] border border-slate-200 shadow-sm p-6 flex flex-col">
+                     <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                         <h3 className="font-black text-[#0F214A] text-xl flex items-center gap-2">
+                             <Clock className="text-[#00A1FF]"/> Linha do Tempo (Hoje)
+                         </h3>
+                         <div className="flex gap-2">
+                             <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border border-blue-100">
+                                 {ativosHoje.length} Pendentes
+                             </span>
+                             <span className="text-[10px] font-black bg-green-50 text-green-600 px-3 py-1.5 rounded-lg border border-green-100">
+                                 {realizadosHoje.length} Atendidos
+                             </span>
+                         </div>
+                     </div>
+
+                     <div className="overflow-y-auto max-h-[600px] custom-scrollbar pr-2 space-y-3">
+                         {ativosHoje.length > 0 ? ativosHoje.map(ag => {
+                             const isAguardando = ag.statusRecepcao === 'aguardando';
+                             return (
+                                 <div key={ag.id} className={`flex flex-col md:flex-row md:items-center justify-between p-4 rounded-2xl border transition-all ${isAguardando ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-slate-50 border-slate-100 hover:border-[#00A1FF]'}`}>
+                                     
+                                     <div className="flex items-center gap-4 mb-3 md:mb-0">
+                                         <div className={`px-3 py-2 rounded-xl text-center min-w-[70px] ${isAguardando ? 'bg-amber-200 text-amber-900' : 'bg-[#0F214A] text-white'}`}>
+                                             <span className="block text-sm font-black">{ag.hora}</span>
+                                         </div>
+                                         <div>
+                                             <h4 className="font-black text-slate-800 text-base">{ag.paciente}</h4>
+                                             <div className="flex items-center gap-2 mt-1">
+                                                 <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><Award size={12}/> {ag.profissional}</span>
+                                                 <span className="text-slate-300">•</span>
+                                                 <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><Building2 size={12}/> {ag.local}</span>
+                                             </div>
+                                         </div>
+                                     </div>
+
+                                     <div className="flex items-center gap-2 w-full md:w-auto">
+                                         <button onClick={() => navegarPara('pacientes', {pacienteId: ag.pacienteId})} className="flex-1 md:flex-none p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-[#00A1FF] rounded-xl transition-colors flex justify-center" title="Abrir Ficha Clínica">
+                                             <Users size={18}/>
+                                         </button>
+                                         <button onClick={() => anunciarChegada(ag)} disabled={isAguardando} className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-sm ${isAguardando ? 'bg-amber-100 text-amber-600 cursor-not-allowed' : 'bg-[#00A1FF] text-white hover:bg-blue-600'}`}>
+                                             {isAguardando ? <><CheckCircle2 size={16}/> Em Espera</> : <><BellRing size={16}/> Anunciar Chegada</>}
+                                         </button>
+                                     </div>
+                                 </div>
+                             );
+                         }) : (
+                             <div className="text-center py-20">
+                                 <CheckCircle2 size={40} className="mx-auto text-green-400 mb-3"/>
+                                 <p className="font-black text-slate-500">A fila de pacientes está limpa para hoje.</p>
+                             </div>
+                         )}
+                     </div>
+                 </div>
+             </div>
+          </div>
+      );
+  };
+
+  // --- MÓDULO 2: DASHBOARD CLÍNICO E GESTÃO ---
   const renderDashboard = () => {
+    if (user.role === 'recepcao') return renderRecepcaoDashboard();
+
     const hojeIso = obterDataLocalISO(new Date());
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     
@@ -239,7 +414,10 @@ function MainApp() {
                         <p className="text-[10px] font-black uppercase text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal ({carouselIdx + 1}/{proximosPendentesMeus.length})</p>
                         {proximoAtendimento ? (
                             <>
-                                <h2 className="text-4xl md:text-5xl font-black mb-3">{proximoAtendimento.paciente}</h2>
+                                <h2 className="text-4xl md:text-5xl font-black mb-3 flex items-center gap-4">
+                                    {proximoAtendimento.paciente} 
+                                    {proximoAtendimento.statusRecepcao === 'aguardando' && <span className="bg-[#FFCC00] text-[#0F214A] text-xs font-black px-3 py-1 rounded-full animate-pulse border border-yellow-400 align-middle">Na Recepção</span>}
+                                </h2>
                                 <div className="flex flex-wrap gap-3 mb-6">
                                     <span className="bg-[#00A1FF] text-white px-3 py-1.5 rounded-xl font-black text-sm">{proximoAtendimento.hora}</span>
                                     <span className="bg-white/10 px-3 py-1.5 rounded-xl font-bold text-sm border border-white/10">{proximoAtendimento.local}</span>
@@ -260,7 +438,7 @@ function MainApp() {
                             </>
                         ) : <h2 className="text-3xl font-black text-slate-400">Sem sessões pendentes.</h2>}
                     </div>
-                    {proximoAtendimento && <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="relative z-10 mt-8 bg-[#FFCC00] text-[#0F214A] px-10 py-4 rounded-2xl font-black text-sm w-fit flex items-center gap-3">Preparar Atendimento <ArrowRight/></button>}
+                    {proximoAtendimento && <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="relative z-10 mt-8 bg-[#FFCC00] text-[#0F214A] px-10 py-4 rounded-2xl font-black text-sm w-fit flex items-center gap-3 hover:scale-105 transition-transform">Preparar Atendimento <ArrowRight/></button>}
                     <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
                 </div>
 
@@ -380,7 +558,6 @@ function MainApp() {
           ))}
         </nav>
         
-        {/* BOTÃO DE EDIÇÃO DE PERFIL PRÓPRIO REPOSICIONADO PARA PREENCHER ESPAÇO */}
         <button onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} className="p-4 flex flex-col items-center gap-1 text-slate-500 hover:text-[#00A1FF] transition-colors mt-auto">
             <UserCog size={22}/>
             <span className={`text-[8px] font-black uppercase ${!isSidebarOpen ? 'hidden' : 'block'}`}>Meu Perfil</span>
@@ -402,13 +579,7 @@ function MainApp() {
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer hover:scale-105 transition-transform" onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} title="Editar Meu Perfil">
                   {user.nome.charAt(0)}
               </div>
-              
-              {/* NOVO POSICIONAMENTO DO BOTÃO LOGOUT */}
-              <button 
-                onClick={fazerLogout} 
-                className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 rounded-full transition-colors ml-1" 
-                title="Sair do Sistema"
-              >
+              <button onClick={fazerLogout} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 rounded-full transition-colors ml-1" title="Sair do Sistema">
                   <LogOut size={16}/>
               </button>
            </div>
