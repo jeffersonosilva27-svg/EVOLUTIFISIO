@@ -3,7 +3,7 @@ import {
   HeartPulse, LayoutDashboard, Calendar, Users, 
   DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
   CheckCircle2, ArrowRight, Lock, ChevronLeft, 
-  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog, BellRing, PhoneForwarded, TrendingUp
+  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog, BellRing, PhoneForwarded, TrendingUp, Save
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -17,7 +17,7 @@ import Equipe from './views/Equipe';
 
 // CONSTANTES GLOBAIS DE CONFIGURAÇÃO
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.6.2";
+const APP_VERSION = "v1.7.0";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -188,6 +188,58 @@ function MainApp() {
           registrarLog(user, "Alteração de Privilégio", `Mudou papel do profissional ${profId} para ${novoStatus}`);
           alert("Permissão atualizada!");
       } catch (e) { alert("Erro ao atualizar."); }
+  };
+
+  const realizarBackupDB = async () => {
+    if (!isSuperGestor) return;
+    if (!window.confirm("Atenção: Você está prestes a exportar toda a base de dados. Deseja continuar?")) return;
+    
+    setLoading(true);
+    try {
+        const payloadJson = { timestampExportacao: new Date().toISOString(), pacientes: [], agendamentos: [], profissionais: [], estoque: [] };
+        let csvPacientes = "ID,Nome,CPF,WhatsApp,Clinicas_Vinculadas\n";
+
+        const pacSnap = await getDocs(collection(db, "pacientes"));
+        for (let pDoc of pacSnap.docs) {
+            let pData = { id: pDoc.id, ...pDoc.data() };
+            
+            const clinicasStr = Array.isArray(pData.clinicaVinculo) ? pData.clinicaVinculo.join(';') : (pData.clinicaVinculo || '');
+            csvPacientes += `${pData.id},${pData.nome},${pData.cpf},${pData.whatsapp},${clinicasStr}\n`;
+
+            const evoSnap = await getDocs(collection(db, "pacientes", pDoc.id, "evolucoes"));
+            pData.evolucoes = evoSnap.docs.map(d => ({id: d.id, ...d.data()}));
+            
+            const planoSnap = await getDocs(collection(db, "pacientes", pDoc.id, "plano_tratamento"));
+            pData.planoTratamento = planoSnap.docs.map(d => ({id: d.id, ...d.data()}));
+
+            payloadJson.pacientes.push(pData);
+        }
+
+        const jsonBlob = new Blob([JSON.stringify(payloadJson, null, 2)], { type: 'application/json' });
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        const linkJson = document.createElement('a');
+        linkJson.href = jsonUrl;
+        linkJson.download = `EVOLUTI_FullBackup_JSON_${obterDataLocalISO()}.json`;
+        document.body.appendChild(linkJson);
+        linkJson.click();
+        document.body.removeChild(linkJson);
+
+        const csvBlob = new Blob([csvPacientes], { type: 'text/csv;charset=utf-8;' });
+        const csvUrl = URL.createObjectURL(csvBlob);
+        const linkCsv = document.createElement('a');
+        linkCsv.href = csvUrl;
+        linkCsv.download = `EVOLUTI_TabelaPacientes_${obterDataLocalISO()}.csv`;
+        document.body.appendChild(linkCsv);
+        linkCsv.click();
+        document.body.removeChild(linkCsv);
+
+        registrarLog(user, "Exportação de Banco de Dados", "Realizou o download duplo (JSON/CSV) de backup do sistema");
+        alert("Backup duplo concluído com sucesso!");
+    } catch(e) {
+        alert("Erro ao realizar backup estrutural.");
+        console.error(e);
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -404,14 +456,12 @@ function MainApp() {
     const faltasCriticasMes = agendaMesGlobal.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
     const taxaCritica = agendaMesGlobal.length > 0 ? ((faltasCriticasMes.length / agendaMesGlobal.length) * 100).toFixed(1) : 0;
 
-    // CÁLCULO DE FATURAMENTO MENSAL DINÂMICO
     const faturamentoSessoesMes = agendaMesGlobal.filter(a => a.status === 'realizado').reduce((acc, a) => {
         const pac = pacientes.find(p => p.id === a.pacienteId);
         return acc + Number(pac?.valor || 0);
     }, 0);
     
     const faturamentoInsumosMes = consumosGlobais.filter(c => c.data && c.data.startsWith(mesAtualIso)).reduce((acc, c) => acc + Number(c.precoTotal || 0), 0);
-    
     const faturamentoTotalMes = faturamentoSessoesMes + faturamentoInsumosMes;
 
     return (
@@ -628,6 +678,13 @@ function MainApp() {
               <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer hover:scale-105 transition-transform" onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} title="Editar Meu Perfil">
                   {user.nome.charAt(0)}
               </div>
+
+              {isSuperGestor && (
+                  <button disabled={loading} onClick={realizarBackupDB} className="w-8 h-8 flex items-center justify-center text-[#00A1FF] hover:text-white hover:bg-[#00A1FF] rounded-full transition-colors ml-1" title="Realizar Backup do Banco de Dados">
+                      {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16}/>}
+                  </button>
+              )}
+
               <button onClick={fazerLogout} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 rounded-full transition-colors ml-1" title="Sair do Sistema">
                   <LogOut size={16}/>
               </button>

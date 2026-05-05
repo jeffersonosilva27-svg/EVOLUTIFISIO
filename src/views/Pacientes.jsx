@@ -38,6 +38,10 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const [novoSoap, setNovoSoap] = useState('');
   const [metricaPain, setMetricaPain] = useState(0); 
   const [editandoEvolucaoId, setEditandoEvolucaoId] = useState(null);
+  
+  // PATCH v1.6.4: Estados para Data e Hora Retroativas
+  const [dataEvolucao, setDataEvolucao] = useState('');
+  const [horaEvolucao, setHoraEvolucao] = useState('');
 
   const [agendamentosFuturos, setAgendamentosFuturos] = useState([]);
   const [agendamentosGlobais, setAgendamentosGlobais] = useState([]); 
@@ -63,6 +67,15 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   const paramConsumido = useRef(false);
   const nomeProfissionalLogado = user?.nome || user?.name || 'Equipe';
   const isRecepcao = user?.role === 'recepcao';
+
+  // Configura a data atual como Fallback caso não esteja preenchida
+  useEffect(() => {
+     if (!editandoEvolucaoId && !dataEvolucao && pacienteSelecionado) {
+         const now = new Date();
+         setDataEvolucao(obterDataLocalISO(now));
+         setHoraEvolucao(now.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}));
+     }
+  }, [editandoEvolucaoId, dataEvolucao, pacienteSelecionado]);
 
   useEffect(() => {
     if (navParams?.pacienteId && !paramConsumido.current && pacientes.length > 0) {
@@ -97,27 +110,20 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     if (!novoPaciente.clinicaVinculo || novoPaciente.clinicaVinculo.length === 0) {
         return alert("Selecione pelo menos uma clínica de vínculo para este paciente.");
     }
-    
     setSalvandoPaciente(true);
-    
     try {
       if (editandoId) {
         const batch = writeBatch(db);
-        
         const pacRef = doc(db, "pacientes", editandoId);
         batch.update(pacRef, novoPaciente);
 
         const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", editandoId));
         const snapAg = await getDocs(qAg);
-        snapAg.forEach(docAg => {
-            batch.update(doc(db, "agendamentos", docAg.id), { clinicaVinculo: novoPaciente.clinicaVinculo });
-        });
+        snapAg.forEach(docAg => { batch.update(doc(db, "agendamentos", docAg.id), { clinicaVinculo: novoPaciente.clinicaVinculo }); });
 
         const qCons = query(collection(db, "consumos"), where("pacienteId", "==", editandoId));
         const snapCons = await getDocs(qCons);
-        snapCons.forEach(docCons => {
-            batch.update(doc(db, "consumos", docCons.id), { clinicaVinculo: novoPaciente.clinicaVinculo });
-        });
+        snapCons.forEach(docCons => { batch.update(doc(db, "consumos", docCons.id), { clinicaVinculo: novoPaciente.clinicaVinculo }); });
 
         await batch.commit();
 
@@ -128,10 +134,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
         alert("Paciente cadastrado com sucesso!");
       }
       fecharFormulario();
-    } catch (error) { 
-        console.error(error);
-        alert("Erro ao salvar os dados e sincronizar o histórico."); 
-    }
+    } catch (error) { alert("Erro ao salvar os dados."); }
     setSalvandoPaciente(false);
   };
 
@@ -187,7 +190,6 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
          setConsumosPaciente(list);
       });
 
-      // PATCH v1.6.3: Permitir captura de sessões pendentes passadas
       const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", pacienteSelecionado.id));
       const unsubAg = onSnapshot(qAg, (snapshot) => {
           const hojeIso = obterDataLocalISO(new Date());
@@ -204,6 +206,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       });
 
       setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(0);
+      setDataEvolucao(''); setHoraEvolucao('');
       return () => { unsubEvo(); unsubPlano(); unsubConsumos(); unsubAg(); };
     }
   }, [pacienteSelecionado, user]);
@@ -230,55 +233,97 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
       } catch(e) { alert("Erro ao salvar modulação."); }
   };
 
+  // HERANÇA DE DATA DA CONDUTA ATRASADA
   const puxarCondutaParaEvolucao = (agendamentoModulado) => {
       if (agendamentoModulado && agendamentoModulado.exerciciosPlanejados) {
           const textoEx = agendamentoModulado.exerciciosPlanejados.map(ex => `• ${ex.nome} (${ex.series}x${ex.reps}${ex.carga ? ` - ${ex.carga}` : ''})`).join('\n');
           const prefix = novoSoap ? novoSoap + '\n\n' : '';
           setNovoSoap(prefix + 'Conduta / Exercícios Planejados:\n' + textoEx + '\n\nEvolução Clínica:\n');
+          
+          if (agendamentoModulado.data) setDataEvolucao(agendamentoModulado.data);
+          if (agendamentoModulado.hora) setHoraEvolucao(agendamentoModulado.hora);
       }
   };
 
   const iniciarEdicaoEvolucao = (evo) => {
     setNovoSoap(evo.texto); 
     setMetricaPain(evo.metricaPain !== undefined ? evo.metricaPain : 0); 
+    
+    const objData = new Date(evo.data);
+    setDataEvolucao(obterDataLocalISO(objData));
+    setHoraEvolucao(objData.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}));
+    
     setEditandoEvolucaoId(evo.id);
     window.scrollTo({ top: 0, behavior: 'smooth' }); 
   };
 
-  const apagarEvolucao = async (id) => {
-    if(window.confirm("Apagar esta evolução de forma permanente?")) {
-        try { await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", id)); } 
+  // DELEÇÃO DE PRONTUÁRIO COM AUDITORIA (LOG) E RESTRIÇÃO DE AUTOR
+  const apagarEvolucao = async (evo) => {
+    if (evo.profissionalId !== user?.id) {
+        return alert("Acesso Negado: Apenas o autor pode excluir esta evolução.");
+    }
+    if(window.confirm("Atenção: Tem certeza que deseja apagar esta evolução de forma permanente?")) {
+        try { 
+            await deleteDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", evo.id)); 
+            
+            // Gravação do Log de Auditoria
+            await addDoc(collection(db, "logs"), {
+                usuarioNome: nomeProfissionalLogado,
+                usuarioId: user?.id,
+                registro: user?.registro || 'N/A',
+                acao: "Exclusão de Evolução (SOAPER)",
+                detalhes: `Excluiu evolução do paciente ${pacienteSelecionado.nome} referente à data ${new Date(evo.data).toLocaleDateString('pt-BR')}.`,
+                timestamp: new Date().toISOString()
+            });
+
+            alert("Evolução apagada e auditoria registrada com sucesso.");
+        } 
         catch (e) { alert("Erro ao apagar evolução."); }
     }
   };
 
+  // ASSINATURA CLÍNICA COM REGISTRO PROFISSIONAL E DATA PERSONALIZADA
   const salvarEvolucao = async () => {
-    if (!novoSoap) return alert("Escreva algo antes de salvar.");
+    if (!novoSoap) return alert("Escreva a evolução antes de assinar.");
+    if (!dataEvolucao || !horaEvolucao) return alert("A data e a hora do atendimento são obrigatórias.");
+
     try {
+      const dataFinalISO = new Date(`${dataEvolucao}T${horaEvolucao}:00`).toISOString();
+      const assinaturaCompleta = `${nomeProfissionalLogado} (CREFITO: ${user?.registro || 'Não informado'})`;
+
       if (editandoEvolucaoId) {
         await updateDoc(doc(db, "pacientes", pacienteSelecionado.id, "evolucoes", editandoEvolucaoId), { 
-            texto: novoSoap, metricaPain, dataEdicao: new Date().toISOString() 
+            texto: novoSoap, metricaPain, data: dataFinalISO, dataEdicao: new Date().toISOString() 
         });
-        alert("Evolução atualizada com sucesso!");
+        alert("Evolução clínica atualizada com sucesso!");
       } else {
         await addDoc(collection(db, "pacientes", pacienteSelecionado.id, "evolucoes"), { 
-            texto: novoSoap, data: new Date().toISOString(), 
-            profissional: nomeProfissionalLogado, profissionalId: user?.id, metricaPain 
+            texto: novoSoap, 
+            data: dataFinalISO, 
+            profissional: assinaturaCompleta, 
+            profissionalId: user?.id, 
+            metricaPain 
         });
         
+        // Atualiza a flag na agenda para o painel gamificado de Metas SOAPER
         if (navParams?.atualizarStatusAgendamento) {
             await updateDoc(doc(db, "agendamentos", navParams.atualizarStatusAgendamento), { status: 'realizado' });
         } else {
-            const hoje = obterDataLocalISO(new Date());
-            const agendamentoHj = agendamentosGlobais.find(a => a.pacienteId === pacienteSelecionado.id && a.profissionalId === user.id && a.data <= hoje && (a.status === 'pendente' || a.status === 'confirmado'));
-            if (agendamentoHj) {
-                await updateDoc(doc(db, "agendamentos", agendamentoHj.id), { status: 'realizado' });
+            const agendamentoAlvo = agendamentosGlobais.find(a => 
+                a.pacienteId === pacienteSelecionado.id && 
+                a.profissionalId === user.id && 
+                a.data === dataEvolucao && // cruza com a data retroativa preenchida
+                (a.status === 'pendente' || a.status === 'confirmado')
+            );
+            if (agendamentoAlvo) {
+                await updateDoc(doc(db, "agendamentos", agendamentoAlvo.id), { status: 'realizado' });
             }
         }
         alert("Evolução assinada digitalmente com sucesso!");
       }
       setNovoSoap(''); setEditandoEvolucaoId(null); setMetricaPain(0);
-    } catch (e) { alert("Erro ao salvar evolução."); }
+      setDataEvolucao(''); setHoraEvolucao('');
+    } catch (e) { alert("Erro ao assinar evolução."); }
   };
 
   const adicionarExercicio = async (e) => {
@@ -431,8 +476,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
         ${evolucoes.length > 0 ? evolucoes.map(evo => `
             <div class="evo-card">
                <div class="evo-meta">
-                   DATA: ${new Date(evo.data).toLocaleDateString('pt-BR')} às ${new Date(evo.data).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} | 
-                   PROFISSIONAL: ${evo.profissional} | 
+                   DATA DA SESSÃO: ${new Date(evo.data).toLocaleDateString('pt-BR')} às ${new Date(evo.data).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} <br/>
+                   ASSINATURA: ${evo.profissional} <br/>
                    ESCALA DE DOR (EVA): ${evo.metricaPain || 0}
                </div>
                <div class="evo-text">${evo.texto}</div>
@@ -560,27 +605,45 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
 
                       <div className="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4">
                         <h3 className={`font-bold ${editandoEvolucaoId ? 'text-amber-900' : 'text-[#0F214A]'}`}>
-                          {editandoEvolucaoId ? 'Editando Evolução Existente' : 'Nova Evolução Clínica'}
+                          {editandoEvolucaoId ? 'Editando Evolução Existente' : 'Nova Evolução Clínica (SOAPER)'}
                         </h3>
                         <div className="flex items-center gap-3 w-full md:w-auto">
-                          {editandoEvolucaoId && <button onClick={() => {setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(0);}} className="text-xs font-black text-amber-600 hover:text-amber-800 underline mr-2">Cancelar Edição</button>}
+                          {editandoEvolucaoId && <button onClick={() => {setEditandoEvolucaoId(null); setNovoSoap(''); setMetricaPain(0); setDataEvolucao(''); setHoraEvolucao('');}} className="text-xs font-black text-amber-600 hover:text-amber-800 underline mr-2">Cancelar Edição</button>}
                           <div className="flex flex-1 md:flex-none items-center justify-between gap-3 bg-white px-4 py-2 rounded-xl border border-blue-200 shadow-sm">
                             <span className="text-[10px] font-black text-slate-400 uppercase whitespace-nowrap">Escala EVA: {metricaPain}</span>
                             <input type="range" min="0" max="10" className="w-full md:w-24 cursor-pointer accent-[#00A1FF]" value={metricaPain} onChange={e => setMetricaPain(parseInt(e.target.value))}/>
                           </div>
                         </div>
                       </div>
-                      <textarea className="w-full border-2 border-white rounded-2xl p-4 h-40 mb-4 outline-none focus:border-[#00A1FF] bg-white/80 font-medium text-slate-700 text-sm" placeholder="Descreva o atendimento..." value={novoSoap} onChange={e => setNovoSoap(e.target.value)} />
-                      <div className="flex gap-3">
+                      
+                      {/* BLOCO DE DATA RETROATIVA */}
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div className="flex flex-col bg-white p-2 rounded-xl border border-slate-200">
+                             <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Data da Sessão</label>
+                             <input type="date" className="outline-none text-sm font-bold text-slate-700 bg-transparent px-1" value={dataEvolucao} onChange={(e) => setDataEvolucao(e.target.value)} />
+                          </div>
+                          <div className="flex flex-col bg-white p-2 rounded-xl border border-slate-200">
+                             <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Hora da Sessão</label>
+                             <input type="time" className="outline-none text-sm font-bold text-slate-700 bg-transparent px-1" value={horaEvolucao} onChange={(e) => setHoraEvolucao(e.target.value)} />
+                          </div>
+                      </div>
+
+                      <textarea className="w-full border-2 border-white rounded-2xl p-4 h-40 mb-4 outline-none focus:border-[#00A1FF] bg-white/80 font-medium text-slate-700 text-sm" placeholder="S: Paciente relata...\nO: No exame físico apresenta...\nA: Melhora do quadro geral...\nP: Conduta realizada...\nE: Boa tolerância...\nR: Reavaliação mantida..." value={novoSoap} onChange={e => setNovoSoap(e.target.value)} />
+                      
+                      <div className="flex gap-3 items-center">
                         <button onClick={salvarEvolucao} className={`w-full md:w-auto ${editandoEvolucaoId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#00A1FF] hover:bg-blue-600'} text-white px-8 py-3.5 rounded-xl font-black shadow-lg transition-colors text-sm`}>
-                          {editandoEvolucaoId ? 'Guardar Alterações' : 'Assinar Digitalmente'}
+                          {editandoEvolucaoId ? 'Guardar Alterações' : 'Assinar Prontuário'}
                         </button>
+                        <p className="hidden md:block text-[10px] font-bold text-slate-400 flex-1 ml-4 border-l border-slate-300 pl-4">
+                            Sua assinatura será registrada como:<br/> 
+                            <span className="text-[#0F214A]">{nomeProfissionalLogado} - CREFITO: {user?.registro || 'Pendente'}</span>
+                        </p>
                       </div>
                    </div>
                    
                    <div className="space-y-4">
                       {evolucoes.map(evo => {
-                        const isOwner = evo.profissionalId === user?.id || (!evo.profissionalId && evo.profissional === nomeProfissionalLogado) || user?.role === 'gestor_clinico';
+                        const isAuthor = evo.profissionalId === user?.id;
                         return (
                             <div key={evo.id} className={`bg-white p-5 md:p-6 rounded-[24px] border shadow-sm transition-all ${editandoEvolucaoId === evo.id ? 'border-amber-400 ring-4 ring-amber-50' : 'border-slate-100 hover:border-blue-200'}`}>
                             <div className="flex justify-between mb-4 gap-4">
@@ -591,18 +654,21 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                 <div className="flex flex-wrap items-center gap-2">
                                     <CalendarClock size={14} className="text-slate-300 shrink-0"/>
                                     <span className="uppercase tracking-widest text-slate-500">
-                                        Data: <span className="text-slate-700">{new Date(evo.data).toLocaleDateString('pt-BR')}</span> às {new Date(evo.data).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                                        Sessão em: <span className="text-slate-700">{new Date(evo.data).toLocaleDateString('pt-BR')}</span> às {new Date(evo.data).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between w-full md:w-auto gap-4">
-                                    {isOwner ? (
+                                    {isAuthor ? (
                                         <div className="flex items-center gap-2">
-                                            <button onClick={() => iniciarEdicaoEvolucao(evo)} className="text-[#00A1FF] hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg transition-colors"><Edit3 size={12}/> Editar</button>
+                                            <button onClick={() => iniciarEdicaoEvolucao(evo)} className="text-[#00A1FF] hover:text-blue-700 flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"><Edit3 size={12}/> Editar</button>
+                                            <button onClick={() => apagarEvolucao(evo)} className="text-red-500 hover:text-red-700 flex items-center gap-1 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"><Trash2 size={12}/> Excluir</button>
                                         </div>
                                     ) : (
-                                        <div className="flex items-center gap-1 text-slate-300"><ShieldAlert size={12}/> Bloqueado</div>
+                                        <div className="flex items-center gap-1 text-slate-300"><ShieldAlert size={12}/> Protegido por outro autor</div>
                                     )}
-                                    <span className="text-slate-600 uppercase flex items-center gap-1 truncate max-w-[120px]"><Award size={12} className="shrink-0"/> {evo.profissional?.split(' ')[0]}</span>
+                                    <span className="text-slate-600 uppercase flex items-center gap-1 truncate max-w-[200px]" title={evo.profissional}>
+                                        <Award size={12} className="shrink-0"/> {evo.profissional}
+                                    </span>
                                 </div>
                             </div>
                             </div>
