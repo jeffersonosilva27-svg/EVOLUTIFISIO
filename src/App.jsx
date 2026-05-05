@@ -3,7 +3,7 @@ import {
   HeartPulse, LayoutDashboard, Calendar, Users, 
   DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
   CheckCircle2, ArrowRight, Lock, ChevronLeft, 
-  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog, BellRing, PhoneForwarded
+  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog, BellRing, PhoneForwarded, TrendingUp
 } from 'lucide-react';
 
 import { db } from './services/firebaseConfig';
@@ -15,9 +15,9 @@ import Financeiro from './views/Financeiro';
 import Avaliacoes from './views/Avaliacoes';
 import Equipe from './views/Equipe';
 
-// CONSTANTES GLOBAIS DE CONFIGURAÇÃO (Single Source of Truth)
+// CONSTANTES GLOBAIS DE CONFIGURAÇÃO
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.5.0";
+const APP_VERSION = "v1.6.2";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -110,7 +110,8 @@ function MainApp() {
   const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
   const [logsSistema, setLogsSistema] = useState([]);
   const [equipeCompleta, setEquipeCompleta] = useState([]);
-  const [estoqueGeral, setEstoqueGeral] = useState([]); // Novo Estado para a Recepção
+  const [estoqueGeral, setEstoqueGeral] = useState([]);
+  const [consumosGlobais, setConsumosGlobais] = useState([]);
 
   const [isModalActive, setIsModalActive] = useState(false);
   const [showFaltasModal, setShowFaltasModal] = useState(false);
@@ -206,31 +207,32 @@ function MainApp() {
       let unsubLogs = () => {};
       let unsubProfis = () => {};
       let unsubEstoque = () => {};
+      let unsubConsumos = () => {};
 
-      // Carrega logs apenas para super gestor
       if (isSuperGestor) {
         unsubLogs = onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)), (snap) => {
             setLogsSistema(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
       }
 
-      // Carrega equipe e estoque para Gestão e Recepção
-      if (isSuperGestor || user.role === 'recepcao' || user.role === 'gestor_clinico') {
+      if (isSuperGestor || user.role === 'recepcao' || user.role === 'gestor_clinico' || user.role === 'admin_fin') {
         unsubProfis = onSnapshot(collection(db, "profissionais"), (snap) => {
             setEquipeCompleta(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
         unsubEstoque = onSnapshot(collection(db, "estoque"), (snap) => {
             setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => temAcessoClinica(user.clinicasAcesso, e.clinicaVinculo)));
         });
+        unsubConsumos = onSnapshot(collection(db, "consumos"), (snap) => {
+            setConsumosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => temAcessoClinica(user.clinicasAcesso, c.clinicaVinculo)));
+        });
       }
 
-      return () => { unsubPac(); unsubAg(); unsubEx(); unsubLogs(); unsubProfis(); unsubEstoque(); };
+      return () => { unsubPac(); unsubAg(); unsubEx(); unsubLogs(); unsubProfis(); unsubEstoque(); unsubConsumos(); };
     }
   }, [user, isSuperGestor]);
 
   const hasAccess = (roles) => user && (roles.includes('any') || roles.includes(user.role));
 
-  // --- MÓDULO 1: DASHBOARD DA RECEPÇÃO ---
   const renderRecepcaoDashboard = () => {
       const hojeIso = obterDataLocalISO(new Date());
       const agendaHoje = agendamentosGlobais.filter(a => a.data === hojeIso).sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
@@ -241,23 +243,16 @@ function MainApp() {
       const estoqueBaixo = estoqueGeral.filter(e => e.quantidade <= 5);
 
       const anunciarChegada = async (ag) => {
-          // Marca visualmente que o paciente chegou
           try {
               await updateDoc(doc(db, "agendamentos", ag.id), { statusRecepcao: 'aguardando' });
-              
-              // Localiza o profissional para enviar mensagem
               const prof = equipeCompleta.find(p => p.nome === ag.profissional || p.id === ag.profissionalId);
-              
-              // Notificação no Navegador
               dispararPush("Paciente Aguardando", `O paciente ${ag.paciente} já está na recepção para o atendimento das ${ag.hora}.`);
-              
-              // Disparo via WhatsApp
               const numero = prof?.whatsapp ? prof.whatsapp.replace(/\D/g, '') : '';
               if (numero) {
                   const texto = encodeURIComponent(`Olá ${ag.profissional.split(' ')[0]}, o paciente *${ag.paciente}* acabou de chegar na recepção para a sessão das ${ag.hora}.`);
                   window.open(`https://wa.me/${numero}?text=${texto}`, '_blank');
               } else {
-                  alert(`O profissional ${ag.profissional} não possui um número de WhatsApp cadastrado no sistema.`);
+                  alert(`O profissional ${ag.profissional} não possui um número de WhatsApp cadastrado.`);
               }
           } catch (e) {
               alert("Erro ao sinalizar chegada.");
@@ -272,9 +267,7 @@ function MainApp() {
              </header>
 
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                 {/* COLUNA ESQUERDA: ALERTAS E ESTOQUE */}
                  <div className="lg:col-span-1 space-y-6 flex flex-col">
-                     {/* Faltas e Cancelamentos */}
                      <div className="bg-red-50 border border-red-200 rounded-[24px] p-6 shadow-sm flex-1">
                          <h3 className="font-black text-red-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide">
                              <AlertTriangle size={18}/> Alertas do Dia
@@ -293,7 +286,6 @@ function MainApp() {
                          )}
                      </div>
 
-                     {/* Alertas de Estoque Crítico */}
                      <div className="bg-orange-50 border border-orange-200 rounded-[24px] p-6 shadow-sm flex-1">
                          <h3 className="font-black text-orange-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide">
                              <Package size={18}/> Estoque Crítico
@@ -313,7 +305,6 @@ function MainApp() {
                      </div>
                  </div>
 
-                 {/* COLUNA CENTRAL: LINHA DO TEMPO DE PACIENTES */}
                  <div className="lg:col-span-3 bg-white rounded-[32px] border border-slate-200 shadow-sm p-6 flex flex-col">
                      <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                          <h3 className="font-black text-[#0F214A] text-xl flex items-center gap-2">
@@ -372,13 +363,31 @@ function MainApp() {
       );
   };
 
-  // --- MÓDULO 2: DASHBOARD CLÍNICO E GESTÃO ---
   const renderDashboard = () => {
     if (user.role === 'recepcao') return renderRecepcaoDashboard();
 
     const hojeIso = obterDataLocalISO(new Date());
+    const mesAtualIso = hojeIso.substring(0, 7); 
     const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
     
+    const agendaMesProfissional = agendamentosGlobais.filter(a => 
+        a.profissionalId === user.id && 
+        a.data.startsWith(mesAtualIso) && 
+        a.status !== 'cancelado'
+    );
+
+    const sessoesElegiveis = agendaMesProfissional.filter(a => 
+        a.data < hojeIso || (a.data === hojeIso && getMinutos(a.hora) <= minutosAtuais)
+    );
+
+    const sessoesFuturas = agendaMesProfissional.filter(a => 
+        a.data > hojeIso || (a.data === hojeIso && getMinutos(a.hora) > minutosAtuais)
+    );
+
+    const totalMetasMes = sessoesElegiveis.length;
+    const totalEvoluidas = sessoesElegiveis.filter(a => a.status === 'realizado').length;
+    const progressoMetaSOAP = totalMetasMes > 0 ? Math.round((totalEvoluidas / totalMetasMes) * 100) : 0;
+
     const minhaAgenda7Dias = agendamentosGlobais
       .filter(a => a.profissionalId === user.id && a.status !== 'cancelado' && a.status !== 'realizado')
       .sort((a, b) => a.data.localeCompare(b.data) || getMinutos(a.hora) - getMinutos(b.hora));
@@ -390,16 +399,28 @@ function MainApp() {
     const planoGeralPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
     const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoGeralPaciente;
     
-    const mesAtual = hojeIso.substring(0, 7);
-    const agendaMes = agendamentosGlobais.filter(a => a.data && a.data.startsWith(mesAtual));
-    const faltasCriticasMes = agendaMes.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
-    const taxaCritica = agendaMes.length > 0 ? ((faltasCriticasMes.length / agendaMes.length) * 100).toFixed(1) : 0;
+    // VARIÁVEIS GLOBAIS DE GESTÃO DO MÊS
+    const agendaMesGlobal = agendamentosGlobais.filter(a => a.data && a.data.startsWith(mesAtualIso));
+    const faltasCriticasMes = agendaMesGlobal.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
+    const taxaCritica = agendaMesGlobal.length > 0 ? ((faltasCriticasMes.length / agendaMesGlobal.length) * 100).toFixed(1) : 0;
+
+    // CÁLCULO DE FATURAMENTO MENSAL DINÂMICO
+    const faturamentoSessoesMes = agendaMesGlobal.filter(a => a.status === 'realizado').reduce((acc, a) => {
+        const pac = pacientes.find(p => p.id === a.pacienteId);
+        return acc + Number(pac?.valor || 0);
+    }, 0);
+    
+    const faturamentoInsumosMes = consumosGlobais.filter(c => c.data && c.data.startsWith(mesAtualIso)).reduce((acc, c) => acc + Number(c.precoTotal || 0), 0);
+    
+    const faturamentoTotalMes = faturamentoSessoesMes + faturamentoInsumosMes;
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <header>
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel de {user.role === 'gestor_clinico' ? 'Gestão' : 'Atendimento'}</h1>
-                <p className="text-slate-500 font-medium">Bom dia, {user.nome.split(' ')[0]}. {isSuperGestor && "Super Usuário Ativo."}</p>
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                <div>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel de {user.role === 'gestor_clinico' ? 'Gestão' : 'Atendimento'}</h1>
+                    <p className="text-slate-500 font-medium">Bom dia, {user.nome.split(' ')[0]}. {isSuperGestor && "Super Usuário Ativo."}</p>
+                </div>
             </header>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -443,18 +464,46 @@ function MainApp() {
                 </div>
 
                 <div className="flex flex-col gap-4">
-                    <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border shadow-sm cursor-pointer hover:border-[#00A1FF] transition-colors"><p className="text-[10px] font-black uppercase text-slate-400 mb-2">Suas Sessões Hoje</p><h3 className="text-4xl font-black text-[#0F214A]">{agendamentosGlobais.filter(a => a.profissionalId === user.id && a.data === hojeIso && a.status !== 'cancelado').length}</h3></div>
-                    <div onClick={() => navegarPara('pacientes')} className="bg-blue-50 p-6 rounded-[32px] border border-blue-100 shadow-sm cursor-pointer hover:bg-blue-100 transition-colors"><p className="text-[10px] font-black uppercase text-[#00A1FF] mb-2">Pendências SOAP</p><h3 className="text-4xl font-black text-[#00A1FF]">{agendamentosGlobais.filter(a => a.profissionalId === user.id && a.data <= hojeIso && a.status === 'pendente').length}</h3></div>
+                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-[32px] border border-blue-200 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-[10px] font-black uppercase text-[#00A1FF] tracking-widest flex items-center gap-1"><TrendingUp size={14}/> Meta SOAPER Mensal</p>
+                                <span className="text-xs font-black text-blue-900 bg-white px-2 py-1 rounded-lg shadow-sm">{mesAtualIso.split('-').reverse().join('/')}</span>
+                            </div>
+                            <h3 className="text-4xl font-black text-[#0F214A]">{progressoMetaSOAP}%</h3>
+                            <p className="text-xs font-bold text-slate-500 mt-1">{totalEvoluidas} evoluídas de {totalMetasMes} sessões passadas.</p>
+                            
+                            {sessoesFuturas.length > 0 && (
+                                <p className="text-[10px] font-bold text-slate-400 mt-2 bg-white/60 p-2 rounded-lg border border-slate-100 flex items-center gap-1">
+                                    <Calendar size={12}/> Restam {sessoesFuturas.length} agendadas este mês.
+                                </p>
+                            )}
+                        </div>
+                        <div className="w-full bg-blue-100 rounded-full h-2.5 mt-6 overflow-hidden">
+                            <div className={`h-2.5 rounded-full transition-all duration-1000 ${progressoMetaSOAP >= 90 ? 'bg-green-500' : progressoMetaSOAP >= 50 ? 'bg-[#00A1FF]' : 'bg-orange-400'}`} style={{ width: `${progressoMetaSOAP}%` }}></div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex gap-4">
+                        <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border shadow-sm cursor-pointer hover:border-[#00A1FF] transition-colors flex-1 flex flex-col justify-center">
+                            <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Agenda Hoje</p>
+                            <h3 className="text-3xl font-black text-[#0F214A]">{agendamentosGlobais.filter(a => a.profissionalId === user.id && a.data === hojeIso && a.status !== 'cancelado').length}</h3>
+                        </div>
+                        <div onClick={() => navegarPara('pacientes')} className="bg-amber-50 p-6 rounded-[32px] border border-amber-100 shadow-sm cursor-pointer hover:bg-amber-100 transition-colors flex-1 flex flex-col justify-center">
+                            <p className="text-[10px] font-black uppercase text-amber-600 mb-2">Atrasadas</p>
+                            <h3 className="text-3xl font-black text-amber-600">{agendamentosGlobais.filter(a => a.profissionalId === user.id && a.data <= hojeIso && a.status === 'pendente').length}</h3>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {hasAccess(['gestor_clinico']) && (
                 <div className="pt-8 border-t space-y-6">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão de Gestão</h3>
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão de Gestão Global (Mês Atual)</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                        <div className="bg-slate-900 text-white rounded-[24px] p-6"><p className="text-[10px] font-black uppercase text-slate-400">Total Clínica Hoje</p><h3 className="text-3xl font-black">{agendamentosGlobais.filter(a => a.data === hojeIso && a.status !== 'cancelado').length}</h3></div>
-                        <div onClick={() => setShowFaltasModal(true)} className="cursor-pointer bg-red-50 text-red-600 rounded-[24px] p-6 border border-red-200"><p className="text-[10px] font-black uppercase">Faltas Críticas (Mês)</p><h3 className="text-3xl font-black">{taxaCritica}%</h3></div>
-                        <div onClick={() => navegarPara('financeiro')} className="cursor-pointer bg-green-50 text-green-700 rounded-[24px] p-6 border border-green-200"><p className="text-[10px] font-black uppercase">Receitas Hoje</p><h3 className="text-3xl font-black">{agendamentosGlobais.filter(a => a.data === hojeIso && a.status === 'realizado').length}</h3></div>
+                        <div onClick={() => navegarPara('financeiro')} className="cursor-pointer bg-green-50 text-green-700 rounded-[24px] p-6 border border-green-200"><p className="text-[10px] font-black uppercase">Faturamento Bruto Mês</p><h3 className="text-3xl font-black">R$ {faturamentoTotalMes.toFixed(2)}</h3></div>
+                        <div className="bg-slate-900 text-white rounded-[24px] p-6"><p className="text-[10px] font-black uppercase text-slate-400">Total Sessões Úteis</p><h3 className="text-3xl font-black">{agendaMesGlobal.filter(a => a.status !== 'cancelado').length}</h3></div>
+                        <div onClick={() => setShowFaltasModal(true)} className="cursor-pointer bg-red-50 text-red-600 rounded-[24px] p-6 border border-red-200"><p className="text-[10px] font-black uppercase">Taxa de Faltas Críticas</p><h3 className="text-3xl font-black">{taxaCritica}%</h3></div>
                     </div>
                 </div>
             )}

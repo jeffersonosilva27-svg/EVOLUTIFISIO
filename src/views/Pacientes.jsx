@@ -8,7 +8,6 @@ import {
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where, writeBatch, getDocs } from 'firebase/firestore';
 
-// PATCH v1.4.9: Adição das categorias "Funcionais" e "Recursos Terapêuticos"
 const GRUPOS_MUSCULARES = [
   'Cervical', 'Ombros / Manguito', 'Dorsal / Escápulas', 'Peitoral', 
   'Core / Abdômen', 'Lombar', 'Pelve / Quadril', 'Coxas / Isquiotibiais', 
@@ -188,11 +187,18 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
          setConsumosPaciente(list);
       });
 
+      // PATCH v1.6.3: Permitir captura de sessões pendentes passadas
       const qAg = query(collection(db, "agendamentos"), where("pacienteId", "==", pacienteSelecionado.id));
       const unsubAg = onSnapshot(qAg, (snapshot) => {
+          const hojeIso = obterDataLocalISO(new Date());
           const ags = snapshot.docs
             .map(d => ({id: d.id, ...d.data()}))
-            .filter(a => (a.status === 'pendente' || a.status === 'confirmado') && a.profissionalId === user?.id)
+            .filter(a => {
+                if (a.profissionalId !== user?.id) return false;
+                if (a.status === 'pendente') return true; 
+                if (a.status === 'confirmado' && a.data >= hojeIso) return true; 
+                return false;
+            })
             .sort((a,b) => new Date(a.data) - new Date(b.data));
           setAgendamentosFuturos(ags);
       });
@@ -217,7 +223,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
   };
 
   const salvarModulacaoSessao = async () => {
-      if (!sessaoModulacaoId) return alert("Selecione uma sessão futura agendada.");
+      if (!sessaoModulacaoId) return alert("Selecione uma sessão agendada.");
       try {
           await updateDoc(doc(db, "agendamentos", sessaoModulacaoId), { exerciciosPlanejados: exerciciosSessao });
           alert("Sessão modulada com sucesso!");
@@ -264,7 +270,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
             await updateDoc(doc(db, "agendamentos", navParams.atualizarStatusAgendamento), { status: 'realizado' });
         } else {
             const hoje = obterDataLocalISO(new Date());
-            const agendamentoHj = agendamentosGlobais.find(a => a.pacienteId === pacienteSelecionado.id && a.profissionalId === user.id && a.data === hoje && (a.status === 'pendente' || a.status === 'confirmado'));
+            const agendamentoHj = agendamentosGlobais.find(a => a.pacienteId === pacienteSelecionado.id && a.profissionalId === user.id && a.data <= hoje && (a.status === 'pendente' || a.status === 'confirmado'));
             if (agendamentoHj) {
                 await updateDoc(doc(db, "agendamentos", agendamentoHj.id), { status: 'realizado' });
             }
@@ -455,6 +461,8 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
     { id: 'financeiro', icon: Landmark, label: 'Financeiro e Cobrança', restritoFin: true, restritoClinico: false }
   ];
 
+  const hojeIso = obterDataLocalISO(new Date());
+
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300 pb-20">
       
@@ -543,7 +551,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                   ) : (
                                       <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-white/50 p-3 rounded-xl border border-slate-300 border-dashed w-fit">
                                           <Lightbulb size={16} className="text-amber-400 shrink-0"/>
-                                          Dica: Module a próxima sessão na aba "Plano" para puxar os exercícios para cá.
+                                          Dica: Module as sessões (incluindo as atrasadas) na aba "Plano" para puxar os exercícios para cá.
                                       </div>
                                   )
                               })()}
@@ -612,8 +620,13 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                        {agendamentosFuturos.length > 0 ? (
                            <>
                                <select className="w-full max-w-lg p-3 md:p-4 bg-white border border-blue-200 rounded-2xl outline-none focus:border-[#00A1FF] font-black text-[#0F214A] text-sm shadow-sm cursor-pointer truncate" value={sessaoModulacaoId} onChange={(e) => handleSelectModulacao(e.target.value)}>
-                                   <option value="">Selecione sua sessão futura...</option>
-                                   {agendamentosFuturos.map(ag => ( <option key={ag.id} value={ag.id}>{formatarDataAgenda(ag.data)} - {ag.hora} ({ag.local})</option> ))}
+                                   <option value="">Selecione a sessão para modular...</option>
+                                   {agendamentosFuturos.map(ag => ( 
+                                       <option key={ag.id} value={ag.id}>
+                                           {ag.status === 'pendente' && ag.data < hojeIso ? '[ATRASADA] ' : ''}
+                                           {formatarDataAgenda(ag.data)} - {ag.hora} ({ag.local})
+                                       </option> 
+                                   ))}
                                </select>
                                
                                {sessaoModulacaoId && (
@@ -646,7 +659,7 @@ export default function Pacientes({ pacientes, hasAccess, user, navParams, setMo
                                )}
                            </>
                        ) : (
-                           <p className="text-sm font-bold text-slate-500 bg-white/50 p-4 md:p-6 rounded-2xl border border-blue-100">Não possui agendamentos futuros para este paciente.</p>
+                           <p className="text-sm font-bold text-slate-500 bg-white/50 p-4 md:p-6 rounded-2xl border border-blue-100">Não possui agendamentos passados pendentes ou futuros.</p>
                        )}
                     </div>
 
