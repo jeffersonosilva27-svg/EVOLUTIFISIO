@@ -8,17 +8,15 @@ import {
 
 import { db } from './services/firebaseConfig';
 import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy, collectionGroup, limit } from 'firebase/firestore';
-import { SpeedInsights } from '@vercel/speed-insights/react';
 
-import Agenda from './views/Agenda'; 
-import Pacientes from './views/Pacientes';
-import Financeiro from './views/Financeiro';
-import Avaliacoes from './views/Avaliacoes';
-import Equipe from './views/Equipe';
+// Injeção de Telemetria e Performance (Vercel)
+import { SpeedInsights } from '@vercel/speed-insights/react';
+import { Analytics } from '@vercel/analytics/react';
+import { track } from '@vercel/analytics';
 
 // CONSTANTES GLOBAIS DE CONFIGURAÇÃO
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.8.0";
+const APP_VERSION = "v1.9.0";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -136,6 +134,9 @@ function MainApp() {
     }
     setNavParams(params); 
     setCurrentView(view); 
+    
+    // Custom Event Analytics
+    track('Acessou_Modulo', { modulo: view });
   };
 
   const realizarLogin = async (e) => {
@@ -154,6 +155,10 @@ function MainApp() {
           setUser(userData);
           sessionStorage.setItem('evoluti_user', JSON.stringify(userData));
           registrarLog(userData, "Login", "Acessou a plataforma");
+          
+          // Custom Event Analytics
+          track('Login_Realizado', { role: userData.role });
+          
         } else { alert("Senha incorreta."); }
       } else { alert("Usuário não encontrado."); }
     } catch (error) { alert("Erro de conexão."); }
@@ -235,6 +240,8 @@ function MainApp() {
         document.body.removeChild(linkCsv);
 
         registrarLog(user, "Exportação de Banco de Dados", "Realizou o download duplo (JSON/CSV) de backup do sistema");
+        track('Gerou_Backup_Global'); // Custom Event Analytics
+        
         alert("Backup duplo concluído com sucesso!");
     } catch(e) {
         alert("Erro ao realizar backup estrutural.");
@@ -738,6 +745,7 @@ export default function App() {
     <ErrorBoundary>
       <MainApp />
       <SpeedInsights />
+      <Analytics />
     </ErrorBoundary>
   ); 
 }
