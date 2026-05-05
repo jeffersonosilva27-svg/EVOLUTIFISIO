@@ -14,9 +14,16 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Analytics } from '@vercel/analytics/react';
 import { track } from '@vercel/analytics';
 
+// IMPORTAÇÕES DOS MÓDULOS/TELAS (HOTFIX v1.9.1)
+import Agenda from './views/Agenda'; 
+import Pacientes from './views/Pacientes';
+import Financeiro from './views/Financeiro';
+import Avaliacoes from './views/Avaliacoes';
+import Equipe from './views/Equipe';
+
 // CONSTANTES GLOBAIS DE CONFIGURAÇÃO
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.9.0";
+const APP_VERSION = "v1.9.1";
 
 class ErrorBoundary extends Component {
   constructor(props) {
