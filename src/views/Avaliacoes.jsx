@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Sparkles, Plus, Activity, BookOpen, 
-  CheckCircle2, ChevronLeft, Loader2, Save, X, BrainCircuit 
+  CheckCircle2, ChevronLeft, Loader2, Save, X, BrainCircuit, Trash2 
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
@@ -39,7 +39,7 @@ export default function Avaliacoes({ hasAccess }) {
     const dados = await buscarEscalaIA(termoBuscaIA);
     
     if (dados?.erro) {
-      setErroIA(dados.erro);
+      setErroIA(`Falha de Conexão: ${dados.erro}. O servidor da Vercel requer atualização para suportar buscas em JSON.`);
     } else if (dados?.nome) {
       setResultadoIA(dados);
     } else {
