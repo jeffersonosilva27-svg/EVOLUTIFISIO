@@ -8,6 +8,7 @@ import {
 
 import { db } from './services/firebaseConfig';
 import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy, collectionGroup, limit } from 'firebase/firestore';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 import Agenda from './views/Agenda'; 
 import Pacientes from './views/Pacientes';
@@ -17,7 +18,7 @@ import Equipe from './views/Equipe';
 
 // CONSTANTES GLOBAIS DE CONFIGURAÇÃO
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.7.0";
+const APP_VERSION = "v1.8.0";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -732,4 +733,11 @@ function MainApp() {
   );
 }
 
-export default function App() { return <ErrorBoundary><MainApp /></ErrorBoundary>; }
+export default function App() { 
+  return (
+    <ErrorBoundary>
+      <MainApp />
+      <SpeedInsights />
+    </ErrorBoundary>
+  ); 
+}
