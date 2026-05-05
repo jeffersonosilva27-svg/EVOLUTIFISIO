@@ -14,7 +14,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Analytics } from '@vercel/analytics/react';
 import { track } from '@vercel/analytics';
 
-// IMPORTAÇÕES DOS MÓDULOS/TELAS (HOTFIX v1.9.1)
+// IMPORTAÇÕES DOS MÓDULOS/TELAS
 import Agenda from './views/Agenda'; 
 import Pacientes from './views/Pacientes';
 import Financeiro from './views/Financeiro';
@@ -23,7 +23,7 @@ import Equipe from './views/Equipe';
 
 // CONSTANTES GLOBAIS DE CONFIGURAÇÃO
 const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.9.1";
+const APP_VERSION = "v1.10.0";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -122,9 +122,10 @@ function MainApp() {
   const [isModalActive, setIsModalActive] = useState(false);
   const [showFaltasModal, setShowFaltasModal] = useState(false);
   const [showPerfilModal, setShowPerfilModal] = useState(false); 
+  const [showWhatsappAlert, setShowWhatsappAlert] = useState(false); // PATCH v1.10.0: Alerta Obrigatório de WhatsApp
   const [carouselIdx, setCarouselIdx] = useState(0);
 
-  const [perfilEdit, setPerfilEdit] = useState({ nome: '', email: '', registro: '' });
+  const [perfilEdit, setPerfilEdit] = useState({ nome: '', email: '', registro: '', whatsapp: '' });
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
@@ -141,8 +142,6 @@ function MainApp() {
     }
     setNavParams(params); 
     setCurrentView(view); 
-    
-    // Custom Event Analytics
     track('Acessou_Modulo', { modulo: view });
   };
 
@@ -162,10 +161,7 @@ function MainApp() {
           setUser(userData);
           sessionStorage.setItem('evoluti_user', JSON.stringify(userData));
           registrarLog(userData, "Login", "Acessou a plataforma");
-          
-          // Custom Event Analytics
           track('Login_Realizado', { role: userData.role });
-          
         } else { alert("Senha incorreta."); }
       } else { alert("Usuário não encontrado."); }
     } catch (error) { alert("Erro de conexão."); }
@@ -247,7 +243,7 @@ function MainApp() {
         document.body.removeChild(linkCsv);
 
         registrarLog(user, "Exportação de Banco de Dados", "Realizou o download duplo (JSON/CSV) de backup do sistema");
-        track('Gerou_Backup_Global'); // Custom Event Analytics
+        track('Gerou_Backup_Global'); 
         
         alert("Backup duplo concluído com sucesso!");
     } catch(e) {
@@ -298,6 +294,15 @@ function MainApp() {
     }
   }, [user, isSuperGestor]);
 
+  // PATCH v1.10.0: Interceptador de Alerta de WhatsApp
+  useEffect(() => {
+      if (user && (!user.whatsapp || user.whatsapp.trim() === '')) {
+          setShowWhatsappAlert(true);
+      } else {
+          setShowWhatsappAlert(false);
+      }
+  }, [user]);
+
   const hasAccess = (roles) => user && (roles.includes('any') || roles.includes(user.role));
 
   const renderRecepcaoDashboard = () => {
@@ -314,12 +319,15 @@ function MainApp() {
               await updateDoc(doc(db, "agendamentos", ag.id), { statusRecepcao: 'aguardando' });
               const prof = equipeCompleta.find(p => p.nome === ag.profissional || p.id === ag.profissionalId);
               dispararPush("Paciente Aguardando", `O paciente ${ag.paciente} já está na recepção para o atendimento das ${ag.hora}.`);
+              
               const numero = prof?.whatsapp ? prof.whatsapp.replace(/\D/g, '') : '';
               if (numero) {
-                  const texto = encodeURIComponent(`Olá ${ag.profissional.split(' ')[0]}, o paciente *${ag.paciente}* acabou de chegar na recepção para a sessão das ${ag.hora}.`);
-                  window.open(`https://wa.me/${numero}?text=${texto}`, '_blank');
+                  // PATCH v1.10.0: Template de WhatsApp Atualizado
+                  const primeiroNome = prof.nome ? prof.nome.split(' ')[0] : 'Profissional';
+                  const texto = encodeURIComponent(`Dr.(a) ${primeiroNome}. O paciente ${ag.paciente} chegou e lhe aguarda na recepção.`);
+                  window.open(`https://wa.me/55${numero}?text=${texto}`, '_blank');
               } else {
-                  alert(`O profissional ${ag.profissional} não possui um número de WhatsApp cadastrado.`);
+                  alert(`O profissional ${ag.profissional} não possui um número de WhatsApp cadastrado no sistema.`);
               }
           } catch (e) {
               alert("Erro ao sinalizar chegada.");
@@ -672,7 +680,7 @@ function MainApp() {
           ))}
         </nav>
         
-        <button onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} className="p-4 flex flex-col items-center gap-1 text-slate-500 hover:text-[#00A1FF] transition-colors mt-auto">
+        <button onClick={() => { setPerfilEdit({ nome: user.nome || '', email: user.email || '', registro: user.registro || '', whatsapp: user.whatsapp || '' }); setShowPerfilModal(true); }} className="p-4 flex flex-col items-center gap-1 text-slate-500 hover:text-[#00A1FF] transition-colors mt-auto">
             <UserCog size={22}/>
             <span className={`text-[8px] font-black uppercase ${!isSidebarOpen ? 'hidden' : 'block'}`}>Meu Perfil</span>
         </button>
@@ -690,7 +698,7 @@ function MainApp() {
                   <p className="text-xs font-black text-[#0F214A] leading-none">{user.nome}</p>
                   <p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{isSuperGestor ? 'Super Gestor' : user.role.replace('_', ' ')}</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer hover:scale-105 transition-transform" onClick={() => { setPerfilEdit({ nome: user.nome, email: user.email, registro: user.registro }); setShowPerfilModal(true); }} title="Editar Meu Perfil">
+              <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer hover:scale-105 transition-transform" onClick={() => { setPerfilEdit({ nome: user.nome || '', email: user.email || '', registro: user.registro || '', whatsapp: user.whatsapp || '' }); setShowPerfilModal(true); }} title="Editar Meu Perfil">
                   {user.nome.charAt(0)}
               </div>
 
@@ -727,6 +735,7 @@ function MainApp() {
                       <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Nome de Exibição</label><input required className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.nome} onChange={e => setPerfilEdit({...perfilEdit, nome: e.target.value})} /></div>
                       <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">E-mail Profissional</label><input required type="email" className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.email} onChange={e => setPerfilEdit({...perfilEdit, email: e.target.value})} /></div>
                       <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Registro Profissional (CREFITO)</label><input required className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.registro} onChange={e => setPerfilEdit({...perfilEdit, registro: e.target.value})} /></div>
+                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">WhatsApp (Celular)</label><input required placeholder="(11) 99999-9999" className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.whatsapp} onChange={e => setPerfilEdit({...perfilEdit, whatsapp: e.target.value})} /></div>
                       
                       <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4"><p className="text-[10px] font-bold text-blue-600 flex items-center gap-1"><ShieldCheck size={12}/> Suas permissões são geridas pelo Sistema Evoluti.</p></div>
                       
@@ -735,6 +744,28 @@ function MainApp() {
                       </button>
                   </form>
               </div>
+          </div>
+      )}
+
+      {/* PATCH v1.10.0: Modal Obrigatório para WhatsApp */}
+      {showWhatsappAlert && !showPerfilModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
+            <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95 text-center relative overflow-hidden">
+                <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <PhoneForwarded size={40} />
+                </div>
+                <h3 className="font-black text-2xl text-[#0F214A] mb-3">Ação Obrigatória</h3>
+                <p className="text-slate-500 font-medium mb-8 text-sm leading-relaxed px-4">
+                    Para que a recepção possa avisar sobre a chegada dos seus pacientes instantaneamente, você precisa cadastrar o seu número de WhatsApp.
+                </p>
+                <button onClick={() => { 
+                    setShowWhatsappAlert(false); 
+                    setPerfilEdit({ nome: user.nome || '', email: user.email || '', registro: user.registro || '', whatsapp: user.whatsapp || '' }); 
+                    setShowPerfilModal(true); 
+                }} className="w-full bg-[#00A1FF] text-white py-4 rounded-2xl font-black hover:bg-[#0F214A] transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-blue-200">
+                    <UserCog size={18} /> Cadastrar Meu Celular
+                </button>
+            </div>
           </div>
       )}
 
