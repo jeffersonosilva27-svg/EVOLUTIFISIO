@@ -29,10 +29,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ erro: 'Prompt não recebido do frontend.' });
     }
 
-    // PATCH v1.10.3: BYPASS DO SDK + ATUALIZAÇÃO DE MODELO
-    // O Google desligou o gemini-1.5-flash e o gemini-pro recentemente. 
-    // Usamos a versão mais moderna, estável e imune a depreciação (gemini-2.0-flash).
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    // PATCH v1.10.4: ADEQUAÇÃO PARA CHAVES NOVAS
+    // Mudando do gemini-2.0-flash (bloqueado para contas novas) 
+    // para o gemini-1.5-pro (modelo Premium, estável e universalmente aceito).
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
 
     const googleRes = await fetch(endpoint, {
       method: 'POST',
