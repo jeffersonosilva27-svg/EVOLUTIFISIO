@@ -1,5 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
 export default async function handler(req, res) {
   // Configuração de CORS para comunicação fluida com o Frontend
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -31,23 +29,37 @@ export default async function handler(req, res) {
       return res.status(400).json({ erro: 'Prompt não recebido do frontend.' });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // PATCH V1.10.1: Usar 'gemini-pro' que é 100% suportado por todas as versões do SDK antigo
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    // PATCH v1.10.2: BYPASS DO SDK. Chamada REST API direta ao Google.
+    // Usamos o modelo gemini-1.5-flash atualizado sem depender de pacotes npm.
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-    // Chamada limpa e nativa, compatível com todas as versões do SDK do Google
-    const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    const googleRes = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      })
     });
 
-    const respostaTexto = result.response.text();
+    const data = await googleRes.json();
+
+    // Se o Google devolver algum erro na requisição nativa, capturamos aqui
+    if (!googleRes.ok) {
+      throw new Error(data.error?.message || 'Erro desconhecido na API REST do Google.');
+    }
+
+    // Navega diretamente no JSON de resposta do Google para capturar o texto gerado
+    const respostaTexto = data.candidates[0].content.parts[0].text;
 
     return res.status(200).json({ resultado: respostaTexto });
 
   } catch (error) {
     console.error('Erro na API Gemini:', error);
-    // Expondo a MENSAGEM REAL DO ERRO para o frontend (facilita o nosso debug)
+    // Expondo a MENSAGEM REAL DO ERRO para o frontend
     return res.status(500).json({ erro: `Erro no Servidor: ${error.message}` });
   }
 }
