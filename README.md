@@ -1,105 +1,68 @@
-Evoluti Fisio
-Gestão Clínica Inteligente e Prontuários Integrados
-Versão Atual: v1.4.8
-Visão Geral do Projeto
-O Evoluti Fisio é uma aplicação web completa desenvolvida para solucionar o problema de fragmentação e falta de contexto nos registros de evoluções fisioterapêuticas. Utilizando a metodologia SOAP (Subjetivo, Objetivo, Avaliação, Plano), a plataforma guia o profissional durante o preenchimento, garantindo qualidade e rastreabilidade da informação clínica.
-O sistema opera em uma arquitetura Multi-Tenant, isolando ou integrando dados operacionais e financeiros entre diferentes bases clínicas sob uma única interface. O público-alvo central são fisioterapeutas, terapeutas ocupacionais, recepcionistas e gestores de clínicas.
-Stack Tecnológica
-O projeto foi construído focando em alta reatividade, Clean Architecture e modularização, utilizando:
-Frontend: React.js
-Estilização: Tailwind CSS (para um design responsivo e fluído)
-Ícones: Lucide React
-Backend / BaaS: Firebase Firestore (Banco de Dados em Tempo Real e Autenticação)
-Arquitetura de Módulos (Design Modular)
-A aplicação foi rigorosamente separada por contextos de responsabilidade para aplicar o princípio DRY (Don't Repeat Yourself) e facilitar a depuração (debugging):
-App.jsx (Core & Gatekeeper): Motor principal de roteamento, controle de estados de autenticação, injeção de interface (Sidebar/Menu) e serviço de auditoria permanente (Logs de Sistema).
-Pacientes.jsx (Prontuário & SOAP): Coração clínico do sistema. Gerencia fichas de pacientes, plano de tratamento dinâmico (Banco Global de Exercícios), controle de consumo de materiais e assinatura digital de evoluções em tempo real.
-Agenda.jsx (Scheduling): Calendário inteligente com prevenção de conflitos de sala/profissional. Suporta agendamentos únicos, geração de pacotes em lote e override (sobrescrita) de valores por sessão.
-Financeiro.jsx (Business Intelligence): Painel analítico financeiro. Inclui motor de cálculo dinâmico de rendimento por profissional (apenas sessões vs. sessões + insumos) e gestão de estoque multi-clínica.
-Equipe.jsx (User Management): Interface de gestão de acessos com proteção nativa contra Privilege Escalation (escalonamento de privilégios).
-Segurança e Controle de Acesso (RBAC)
-O sistema conta com um controle de acesso baseado em papéis (Role-Based Access Control), garantindo que os dados obedeçam ao princípio do privilégio mínimo:
-Recepção: Acesso focado em agendamentos, visualização de estoque e triagem. Valores financeiros globais permanecem censurados.
-Clínico (Fisio/TO): Acesso total aos prontuários dos seus pacientes, modulação de condutas e prescrição de exercícios baseada em evidências.
-Gestor Clínico: Visão macro da clínica, acesso a métricas de faltas críticas e faturamento diário consolidado.
-Super Gestor (God Mode): Acesso de nível raiz (root), hardcoded no sistema e validado pelo registro profissional mestre. Possui autonomia total para auditar logs estruturados permanentes e alterar a hierarquia de qualquer membro da equipe.
-Instruções de Deploy e Testes Locais
-Para "rodar" a aplicação no seu ambiente de desenvolvimento e validar a estruturação do código, siga os passos abaixo:
-1. Instalação de Dependências
-Certifique-se de ter o Node.js instalado. No terminal, na raiz do projeto, execute:
+# Evoluti Fisio - Gestão Clínica Inteligente
 
-Bash
-
-
-npm install
-
-
-2. Configuração do Backend (Firebase)
-No arquivo src/services/firebaseConfig.js, certifique-se de que as chaves de ambiente do seu projeto Firebase estão corretamente preenchidas. O banco de dados Firestore deve estar com as regras de segurança (Security Rules) configuradas para produção.
-3. Inicialização do Servidor de Desenvolvimento
-Execute o comando abaixo para iniciar a aplicação:
-
-Bash
-
-
-npm run dev
-
-
-Acesse http://localhost:3000 (ou a porta indicada no terminal) para visualizar a interface de login (Split-Screen).
-Próximos Passos e Melhorias Contínuas (Backlog)
-Mantendo a visão de engenharia e escalabilidade para as próximas sprints, os seguintes recursos estão previstos para futuras atualizações:
-Módulo de Arquivos Médicos: Integração com Firebase Storage para upload e vinculação de exames de imagem e laudos em PDF diretamente na ficha do paciente.
-Exportação Otimizada: Melhorias no motor de impressão de PDFs para gerar guias de faturamento em padrão TISS/TUSS para convênios.
-Predição Clínica (IA): Implementação de análise de dados cruzada para sugerir progressão de carga estruturada baseada no histórico de evolução da Escala de Dor Analógica (EVA).
-Documentação gerada pelo Arquiteto de Software.
-# Evoluti Fisio
-
-**Gestão Clínica Inteligente e Prontuários Integrados**
-**Versão Atual:** v1.8.0
+**Versão Atual:** v1.4.9
 
 ## Visão Geral do Projeto
+O Evoluti Fisio é uma aplicação web completa desenvolvida para solucionar o problema de fragmentação e falta de contexto nos registros de evoluções fisioterapêuticas e otimizar a gestão da clínica. Utilizando a metodologia SOAP (Subjetivo, Objetivo, Avaliação, Plano), a plataforma guia o profissional durante o preenchimento e centraliza agendamentos, prontuários de pacientes, avaliações científicas e controle financeiro.
 
-[cite_start]O Evoluti Fisio é uma aplicação web completa desenvolvida para solucionar o problema de fragmentação e falta de contexto nos registros de evoluções fisioterapêuticas[cite: 939]. [cite_start]Utilizando a metodologia SOAP (Subjetivo, Objetivo, Avaliação, Plano), a plataforma guia o profissional durante o preenchimento, garantindo qualidade e rastreabilidade da informação clínica[cite: 940]. 
-
-[cite_start]O sistema opera em uma arquitetura Multi-Tenant, isolando ou integrando dados operacionais e financeiros entre diferentes bases clínicas sob uma única interface[cite: 941]. [cite_start]A versão v1.8.0 integra monitoramento de performance em tempo real baseado em RUM (Real-User Monitoring) e processamento Serverless de Inteligência Artificial[cite: 81, 1204].
+O sistema opera de forma segura através de uma arquitetura **Multi-Tenant (Multilocatário)**, permitindo o isolamento ou integração de dados operacionais e financeiros entre diferentes unidades clínicas (ex: Vida e Reabtech) sob uma única plataforma.
 
 ## Stack Tecnológica
+* **Frontend:** React.js, Tailwind CSS, Lucide React (Ícones)
+* **Backend & Banco de Dados:** Firebase (Firestore, Authentication)
+* **Inteligência Artificial:** Integração Google Gemini API
+* **Hospedagem / Infraestrutura:** Vercel
 
-O projeto foi construído focando em alta reatividade, *Clean Architecture* e modularização, utilizando:
+## Arquitetura e Regras de Segurança
+* **Multi-Tenant (Isolamento por Clínica):** O sistema utiliza **Client-Side RLS (Row-Level Security)**. Uma função central (`temAcessoClinica`) intercepta todos os dados buscando "matches" entre o perfil do usuário logado e a clínica do dado/paciente, garantindo a privacidade das informações.
+* **Privacy Mode (Censura Financeira):** Dados financeiros exibidos nos painéis ficam ofuscados por padrão (R$ ****), reveláveis através do botão de alternância (EyeOff) para proteger informações contra olhares de terceiros ou perfis não autorizados.
+* **Super Gestor (God Mode):** Controle de privilégios mestre baseado em identificador único (CREFITO). Apenas o Super Gestor pode visualizar colunas críticas (como atribuição multi-tenant) ou rebaixar/promover outros gestores.
+* **Auditoria (Logs):** Ações críticas (como visualização de prontuários de terceiros ou edição de perfis) são salvas permanentemente em histórico de auditoria.
 
-* [cite_start]**Frontend:** React.js[cite: 943].
-* [cite_start]**Estilização:** Tailwind CSS (para um design responsivo e fluído)[cite: 943].
-* [cite_start]**Ícones:** Lucide React[cite: 943].
-* [cite_start]**Backend / BaaS:** Firebase Firestore (Banco de Dados em Tempo Real e Autenticação)[cite: 943].
-* [cite_start]**Serverless & Hosting:** Vercel (API Proxy, Speed Insights)[cite: 81, 1218].
+## Módulos e Descrições de Funções
 
-## Arquitetura de Módulos (Design Modular)
+### 1. Módulo Principal (`src/App.jsx`)
+O Cérebro da aplicação que lida com a estrutura macro, segurança e estado global.
+* **Controle de Autenticação:** Login e Tela Dividida (Split Screen). Formulário de cadastro de equipe exigindo vinculação da filial.
+* **Motor Multi-Tenant Global:** Configuração da filtragem raiz que propaga apenas dados válidos para as outras "views".
+* **Self-Service Profile:** O usuário logado pode alterar o próprio e-mail, nome e CREFITO diretamente clicando no avatar.
+* **Dashboards Customizados (Roles):**
+    * *Super Gestor / Gestor Clínico:* Métricas de cancelamentos, total de faturamentos (censurados) e painel de Logs de Auditoria.
+    * *Profissional de Saúde:* Carrossel navegável (7 dias) exibindo os próximos pacientes e condutas programadas para preparação prévia.
+    * *Recepção:* Visão focada em chegadas, agendamentos do dia e controle de estoque, sem a exposição do financeiro da empresa.
+* **Motor de Notificações (Push):** Gatilhos que alertam o profissional na tela em tempo real quando ocorrem novos agendamentos ou cancelamentos no sistema.
+* **Assistente Evo:** Tutorial flutuante passo a passo adaptado à hierarquia da pessoa que está logada.
 
-A aplicação foi rigorosamente separada por contextos de responsabilidade para aplicar o princípio DRY (*Don't Repeat Yourself*) e facilitar a depuração (*debugging*):
+### 2. Módulo de Pacientes & Prontuário (`src/views/Pacientes.jsx`)
+O núcleo do histórico de saúde, focado na metodologia clínica.
+* **Atualização em Cascata (Cascade Update):** Ao trocar a clínica a qual um paciente pertence, todos os agendamentos e consumos históricos desse paciente têm seus vínculos atualizados na mesma transação.
+* **Evolução SOAP Inteligente:** Botão que "Puxa a Conduta" do dia, inserindo automaticamente os exercícios e cargas pré-programados na caixa de evolução.
+* **Integração Automática com Agenda:** Ao assinar digitalmente a evolução, a sessão do paciente do dia na Agenda altera seu status para "Realizado".
+* **Banco Global de Condutas (Dumbbell):** Autocompletar inteligente que aprende com as condutas dos profissionais, normalizando termos (Anti-Duplicação) e sugerindo para toda a equipe, mantendo a carga personalizada de forma isolada por paciente.
+* **Escalas Clínicas (Dashboards & Estáticas):** Biblioteca de dezenas de escalas padronizadas (ex: TUG, Escala de Berg) embutidas de forma offline no código (Static Data Strategy). Os testes aplicados preenchem cards dinâmicos indicando o status de evolução/declínio em % do paciente.
+* **Relatórios (PDF):** Geração de relatórios com cabeçalhos detalhados (Extratos para cobrança via Recepção e Histórico Prontuário Integrado para saúde).
 
-* [cite_start]**App.jsx (Core & Gatekeeper):** Motor principal de roteamento, controle de estados de autenticação, injeção de interface (Sidebar/Menu) e serviço de auditoria permanente (Logs de Sistema)[cite: 944]. [cite_start]Incorpora o filtro Client-Side RLS para a lógica Multi-Tenant, motor de Notificações Push e a telemetria do Vercel Speed Insights[cite: 296, 537, 1226].
-* [cite_start]**Pacientes.jsx (Prontuário & SOAP):** Coração clínico do sistema[cite: 945]. [cite_start]Gerencia fichas de pacientes, plano de tratamento dinâmico (Banco Global de Exercícios), controle de consumo de materiais e assinatura digital de evoluções em tempo real[cite: 945]. [cite_start]Possui motor de geração de PDFs para histórico clínico e cobrança[cite: 539].
-* [cite_start]**Agenda.jsx (Scheduling):** Calendário inteligente com prevenção de conflitos de sala/profissional[cite: 946]. [cite_start]Suporta agendamentos únicos, geração de pacotes em lote e override (sobrescrita) de valores por sessão[cite: 947].
-* [cite_start]**Financeiro.jsx (Business Intelligence):** Painel analítico financeiro[cite: 948]. [cite_start]Inclui motor de cálculo dinâmico de rendimento por profissional (apenas sessões vs. sessões + insumos) e gestão de estoque multi-clínica[cite: 948]. [cite_start]Possui Modo Censurado para proteger dados sensíveis[cite: 541].
-* [cite_start]**Equipe.jsx (User Management):** Interface de gestão de acessos com proteção nativa contra Privilege Escalation (escalonamento de privilégios)[cite: 949]. [cite_start]Gerencia métricas de performance individuais e engloba o motor de Disaster Recovery para backup em JSON/CSV[cite: 538].
-* [cite_start]**api/gemini.js (Serverless API):** Rota de backend oculto hospedada na Vercel que atua como proxy seguro para o Google Gemini, impedindo o vazamento da chave de API no frontend[cite: 81, 128].
+### 3. Módulo de Agenda (`src/views/Agenda.jsx`)
+O controle de tempo, com prioridade para ações rápidas.
+* **Agendamento em Lote:** Automação de marcação recorrente (ex: selecionar 10 sessões marcando Ter/Qui), pulando fins de semana automaticamente.
+* **Override Financeiro (ValorSessao):** Modalidade para definir se o preço de uma sessão específica deve divergir do "Valor Base" registrado na ficha do paciente.
+* **Indicadores de Evolução (Bolinhas Piscantes):** * *Verde Piscante:* Paciente atendido e prontuário devidamente evoluído.
+    * *Vermelha Piscante:* Sessão já ocorreu, porém o profissional ainda está devendo a evolução.
+* **Cancelamento Segmentado:** Cancelamentos são discriminados via Menu (<24h, >24h isento, Falta sem justificativa, Erro) para gerar dados para a Gestão.
 
-## Segurança e Controle de Acesso (RBAC)
+### 4. Módulo de Equipe (`src/views/Equipe.jsx`)
+A visão de gestão de Recursos Humanos da Clínica.
+* **Métricas de Performance Individuais:** Painel que cruza "Sessões Atendidas" vs "Prontuários Assinados", calculando a taxa de engajamento do Fisioterapeuta.
+* **Usuários Desativados (Sanfona):** Profissionais inativos deixam a listagem da Agenda e migram para um _Accordion_ retraído no fim da tela.
+* **Backup Nuclear:** Botão do gestor que faz a extração sanitizada em `.json` do Firebase de todas as informações estruturadas.
+* **Reset de Senha:** Ação de emergência concedida ao gestor para reinicialização de perfis bloqueados de outros colaboradores.
 
-O sistema conta com um controle de acesso baseado em papéis (*Role-Based Access Control*), garantindo que os dados obedeçam ao princípio do privilégio mínimo:
+### 5. Módulo Financeiro (`src/views/Financeiro.jsx`)
+Ferramenta analítica (BI) para auditoria e controle de caixa.
+* **Faturamento Dinâmico (Sessões):** Não requer input manual; a receita totaliza iterando todos os Agendamentos "Realizados" cruzando com o Preço Override ou Preço Base.
+* **Detalhamento de Rendimento por Profissional:** Exibe numa tabela classificada (Ranking) a quantidade de sessões de cada terapeuta e a quantia financeira bruta que ele gerou.
+* **Privilégio Zero para Recepção:** Restringe abertamente a área de "Resumo Geral", liberando acesso unicamente à sub-aba de Estoque e Consumos do Dia.
 
-* [cite_start]**Recepção:** Acesso focado em agendamentos, visualização de estoque e triagem[cite: 950]. [cite_start]Valores financeiros globais permanecem censurados[cite: 950]. [cite_start]Tem permissão para lançar insumos em consultas e emitir relatórios individuais de cobrança[cite: 410].
-* [cite_start]**Clínico (Fisio/TO):** Acesso total aos prontuários dos seus pacientes, modulação de condutas e prescrição de exercícios baseada em evidências[cite: 951].
-* [cite_start]**Gestor Clínico:** Visão macro da clínica, acesso a métricas de faltas críticas e faturamento diário consolidado[cite: 952].
-* [cite_start]**Super Gestor (God Mode):** Acesso de nível raiz (root), hardcoded no sistema e validado pelo registro profissional mestre (CREFITO)[cite: 843, 953]. [cite_start]Possui autonomia total para auditar logs estruturados permanentes e alterar a hierarquia de qualquer membro da equipe[cite: 954].
-
-## Instruções de Deploy e Testes Locais
-
-1. [cite_start]**Instalação de Dependências:** Certifique-se de ter o Node.js instalado[cite: 955]. [cite_start]No terminal, na raiz do projeto, instale os pacotes principais e as dependências analíticas (como o `@vercel/speed-insights`)[cite: 1225].
-2. [cite_start]**Configuração do Backend (Firebase):** No arquivo `src/services/firebaseConfig.js`, certifique-se de que as chaves de ambiente do seu projeto Firebase estão corretamente preenchidas[cite: 956].
-3. [cite_start]**Variáveis de Ambiente (Vercel):** Para que a IA funcione, certifique-se de configurar a variável `GEMINI_API_KEY` na aba *Environment Variables* do painel da Vercel, sem o prefixo `VITE_`[cite: 122].
-4. [cite_start]**Inicialização:** Inicie o servidor de desenvolvimento e acesse via navegador para visualizar a interface *Split-Screen*[cite: 958].
-
-## Performance e Telemetria
-
-[cite_start]Este sistema utiliza o **Vercel Speed Insights** (Real-User Monitoring) para avaliar os Core Web Vitals (LCP, INP, CLS, TTFB) diretamente nos navegadores dos usuários[cite: 1204, 1206]. [cite_start]Isso garante detecção imediata de gargalos de interatividade ou atrasos de rede[cite: 1213].
+## Deploy / Infraestrutura
+* Publicado e rodando Serverless na plataforma **Vercel**.
+* A Vercel foi configurada para utilizar Hot Reload local no desenvolvimento através do Vite e carregar Variáveis de Ambiente seguras (Env Vars) para a comunicação com integrações Google.

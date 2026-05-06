@@ -5,67 +5,18 @@ import {
 import { db } from '../services/firebaseConfig';
 import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 
-// ==========================================
-// 📚 BIBLIOTECA LOCAL DE ESCALAS (INQUEBRÁVEL)
-// ==========================================
-const BIBLIOTECA_ESCALAS = [
-  {
-    id: "escala-berg-001",
-    nome: "Escala de Equilíbrio de Berg",
-    sigla: "BBS",
-    objetivo: "Avaliar o equilíbrio estático e dinâmico.",
-    instrucoes: "Peça ao paciente para realizar cada tarefa. Pontue de 0 (incapaz) a 4 (independente).",
-    interpretacao: "0-20: Alto risco de queda | 21-40: Médio risco | 41-56: Baixo risco",
-    itens: [
-      {
-        pergunta: "1. Sentado para de pé",
-        opcoes: [
-          { texto: "Incapaz de levantar sem ajuda", valor: 0 },
-          { texto: "Precisa de mínima ajuda", valor: 2 },
-          { texto: "Levanta-se independentemente", valor: 4 }
-        ]
-      },
-      {
-        pergunta: "2. De pé sem apoio",
-        opcoes: [
-          { texto: "Incapaz de ficar em pé 30s sem ajuda", valor: 0 },
-          { texto: "Fica em pé 30s com supervisão", valor: 2 },
-          { texto: "Fica em pé 2 minutos com segurança", valor: 4 }
-        ]
-      }
-    ]
-  },
-  {
-    id: "escala-tug-002",
-    nome: "Timed Up and Go",
-    sigla: "TUG",
-    objetivo: "Avaliar a mobilidade funcional e risco de quedas.",
-    instrucoes: "O paciente deve levantar de uma cadeira, andar 3 metros, virar, voltar e sentar. Avalie o tempo total.",
-    interpretacao: "< 10s: Risco Normal | 11-20s: Risco Moderado | > 20s: Risco Alto",
-    itens: [
-      {
-        pergunta: "Tempo de Execução (Categorizado)",
-        opcoes: [
-          { texto: "Mais de 20 segundos (Risco Alto)", valor: 0 },
-          { texto: "11 a 20 segundos (Risco Moderado)", valor: 2 },
-          { texto: "Menos de 10 segundos (Normal)", valor: 4 }
-        ]
-      }
-    ]
-  }
-];
+// ✅ IMPORTAÇÃO DA NOSSA NOVA ESTRUTURA MODULAR
+import { BIBLIOTECA_ESCALAS } from '../data/escalas';
 
 export default function Avaliacoes({ hasAccess, user }) {
   const [termoBusca, setTermoBusca] = useState('');
   const [escalaAberta, setEscalaAberta] = useState(null);
   const [respostasAplicacao, setRespostasAplicacao] = useState({});
   
-  // Novos Estados para Vinculação de Paciente
   const [pacientesAtivos, setPacientesAtivos] = useState([]);
   const [pacienteSelecionado, setPacienteSelecionado] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  // Busca a lista de pacientes do Firebase em tempo real
   useEffect(() => {
     const q = query(collection(db, "pacientes"), orderBy("nome", "asc"));
     const unsub = onSnapshot(q, (snap) => {
@@ -82,7 +33,7 @@ export default function Avaliacoes({ hasAccess, user }) {
   const abrirEscala = (escala) => {
     setEscalaAberta(escala);
     setRespostasAplicacao({});
-    setPacienteSelecionado(""); // Reseta a seleção
+    setPacienteSelecionado(""); 
   };
 
   const selecionarOpcao = (perguntaIndex, valor) => {
@@ -93,13 +44,11 @@ export default function Avaliacoes({ hasAccess, user }) {
     return Object.values(respostasAplicacao).reduce((acc, curr) => acc + curr, 0);
   };
 
-  // Função para injetar o resultado no Prontuário do Firebase
   const salvarNoProntuario = async () => {
     if (!pacienteSelecionado) {
         return alert("Erro: Você precisa selecionar um paciente para vincular o resultado!");
     }
     
-    // Verifica se respondeu a todas as perguntas
     if (Object.keys(respostasAplicacao).length < escalaAberta.itens.length) {
         if(!window.confirm("Atenção: Você não respondeu a todos os itens. Deseja salvar mesmo assim?")) return;
     }
@@ -129,7 +78,6 @@ export default function Avaliacoes({ hasAccess, user }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-20">
       
-      {/* CABEÇALHO */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-3">
@@ -139,7 +87,6 @@ export default function Avaliacoes({ hasAccess, user }) {
         </div>
       </div>
 
-      {/* BUSCA INSTANTÂNEA LOCAL */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200">
         <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl flex items-center px-4 focus-within:border-blue-500 transition-all">
           <Search className="text-slate-400 mr-2" size={20}/>
@@ -153,7 +100,6 @@ export default function Avaliacoes({ hasAccess, user }) {
         </div>
       </div>
 
-      {/* GRID DE ESCALAS */}
       <div className="mt-8">
         <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center"><BookOpen className="mr-2 text-blue-600"/> Biblioteca de Testes ({escalasFiltradas.length})</h3>
         
@@ -180,7 +126,6 @@ export default function Avaliacoes({ hasAccess, user }) {
         )}
       </div>
 
-      {/* MODAL DE APLICAÇÃO DA ESCALA */}
       {escalaAberta && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
@@ -195,7 +140,6 @@ export default function Avaliacoes({ hasAccess, user }) {
 
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
               
-              {/* SESSÃO DE VINCULAÇÃO AO PACIENTE (OBRIGATÓRIO) */}
               <div className="mb-8 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-4">
                   <div className="p-3 bg-amber-100 text-amber-600 rounded-xl"><UserCircle size={28}/></div>
                   <div className="flex-1 w-full">
@@ -246,7 +190,6 @@ export default function Avaliacoes({ hasAccess, user }) {
               </div>
             </div>
 
-            {/* BARRA INFERIOR - RESULTADO E BOTÃO SALVAR */}
             <div className="p-8 border-t border-slate-100 bg-white rounded-b-[40px] shrink-0">
               <div className="flex flex-col md:flex-row items-center gap-6">
                 <div className="flex items-center justify-center w-24 h-24 bg-blue-600 rounded-3xl text-white shadow-xl shadow-blue-200 shrink-0">

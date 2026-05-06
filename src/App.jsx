@@ -1,789 +1,803 @@
-import React, { useState, useEffect, useRef, Component } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  HeartPulse, LayoutDashboard, Calendar, Users, 
-  DollarSign, LogOut, ShieldCheck, Loader2, Clock, 
-  CheckCircle2, ArrowRight, Lock, ChevronLeft, 
-  Zap, MessageSquareShare, Award, Target, Dumbbell, Package, Plus, ShoppingCart, ChevronRight, Bot, X, FileText, AlertTriangle, ClipboardList, Building2, History, ShieldAlert, UserCog, BellRing, PhoneForwarded, TrendingUp, Save
+  Users, Calendar as CalendarIcon, FileText, Settings, LogOut, Activity, 
+  Search, Plus, TrendingUp, DollarSign, BrainCircuit, CalendarDays, KeyRound,
+  ShieldAlert, Clock, CheckCircle2, AlertCircle, Dumbbell, Target, History,
+  DatabaseZap, Info, X, UserCog, UserCircle, Edit3, HeartPulse, Stethoscope
 } from 'lucide-react';
+import { auth, db } from './services/firebaseConfig';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateStateChanged,
+  updateProfile
+} from 'firebase/auth';
+import { 
+  doc, setDoc, getDoc, collection, onSnapshot, query, orderBy, 
+  where, addDoc, updateDoc
+} from 'firebase/firestore';
 
-import { db } from './services/firebaseConfig';
-import { collection, onSnapshot, query, where, getDocs, updateDoc, doc, addDoc, orderBy, collectionGroup, limit } from 'firebase/firestore';
-
-// Injeção de Telemetria e Performance (Vercel)
-import { SpeedInsights } from '@vercel/speed-insights/react';
-import { Analytics } from '@vercel/analytics/react';
-import { track } from '@vercel/analytics';
-
-// IMPORTAÇÕES DOS MÓDULOS/TELAS
-import Agenda from './views/Agenda'; 
+// Componentes (Views)
+import Agenda from './views/Agenda';
 import Pacientes from './views/Pacientes';
 import Financeiro from './views/Financeiro';
-import Avaliacoes from './views/Avaliacoes';
 import Equipe from './views/Equipe';
+import Avaliacoes from './views/Avaliacoes';
 
-// CONSTANTES GLOBAIS DE CONFIGURAÇÃO
-const SUPER_GESTOR_REGISTRO = "329099-F";
-const APP_VERSION = "v1.10.0";
+const APP_VERSION = "v1.5.0";
+const SUPER_GESTOR_REGISTRO = "329099-F"; 
 
-class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-          <h1 className="text-3xl font-black text-red-600 mb-2">Erro de Interface</h1>
-          <pre className="bg-white p-6 rounded-2xl border border-red-200 text-red-800 text-xs mb-4">{this.state.error?.toString()}</pre>
-          <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="bg-red-600 text-white px-8 py-3 rounded-xl font-bold">Limpar e Recarregar</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('inicio');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isModalActive, setIsModalActive] = useState(false); 
 
-// SERVIÇOS DO SISTEMA
-export const registrarLog = async (usuario, acao, detalhes) => {
-  if (!usuario) return;
-  try {
-    await addDoc(collection(db, "logs"), {
-      usuarioNome: usuario.nome || usuario.name || 'Usuário',
-      usuarioId: usuario.id,
-      registro: usuario.registro || 'N/A',
-      acao,
-      detalhes,
-      timestamp: new Date().toISOString()
-    });
-  } catch (e) { console.error("Erro ao gravar log:", e); }
-};
+  // Estado para o Tutorial Evo
+  const [evoStep, setEvoStep] = useState(0);
+  const [showEvo, setShowEvo] = useState(true);
 
-const pedirPermissaoNotificacao = async () => {
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted" && Notification.permission !== "denied") {
-    await Notification.requestPermission();
-  }
-};
+  // Autogestão (Self-Service Profile)
+  const [showPerfilModal, setShowPerfilModal] = useState(false);
+  const [perfilForm, setPerfilForm] = useState({ nome: '', email: '', registro: '' });
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
 
-const dispararPush = (titulo, corpo) => {
-  if (Notification.permission === "granted") {
-    new Notification(titulo, { body: corpo, icon: '/favicon.svg' });
-  }
-};
+  // Estados Globais de Dados para o Dashboard
+  const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
+  const [pacientesGlobais, setPacientesGlobais] = useState([]);
+  const [logsAuditoria, setLogsAuditoria] = useState([]);
 
-const obterDataLocalISO = (data) => {
-  const d = data instanceof Date ? data : new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-};
-
-const getMinutos = (horaStr) => {
-  if (!horaStr) return 0;
-  const p = horaStr.split(':');
-  return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
-};
-
-export const temAcessoClinica = (clinicasDoUsuario, clinicaDoItem) => {
-  if (!clinicasDoUsuario || !Array.isArray(clinicasDoUsuario) || clinicasDoUsuario.length === 0) return false;
-  if (!clinicaDoItem) return true; 
-  if (Array.isArray(clinicaDoItem)) {
-      return clinicaDoItem.some(c => clinicasDoUsuario.includes(c));
-  }
-  return clinicasDoUsuario.includes(clinicaDoItem);
-};
-
-function MainApp() {
-  const [user, setUser] = useState(() => {
-    try {
-      let salvo = sessionStorage.getItem('evoluti_user');
-      if (salvo) return JSON.parse(salvo);
-      salvo = localStorage.getItem('evoluti_user');
-      if (salvo) return JSON.parse(salvo);
-      return null;
-    } catch (e) { return null; }
-  }); 
+  // Estados de Login/Registro
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [nome, setNome] = useState('');
+  const [registro, setRegistro] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [clinicasSelecionadas, setClinicasSelecionadas] = useState([]);
+  const [authError, setAuthError] = useState('');
 
   const isSuperGestor = user?.registro === SUPER_GESTOR_REGISTRO;
 
-  const [loading, setLoading] = useState(false);
-  const [currentView, setCurrentView] = useState('dashboard'); 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
-  const [navParams, setNavParams] = useState(null);
-  
-  const [pacientes, setPacientes] = useState([]);
-  const [agendamentosGlobais, setAgendamentosGlobais] = useState([]);
-  const [exerciciosGlobais, setExerciciosGlobais] = useState([]);
-  const [logsSistema, setLogsSistema] = useState([]);
-  const [equipeCompleta, setEquipeCompleta] = useState([]);
-  const [estoqueGeral, setEstoqueGeral] = useState([]);
-  const [consumosGlobais, setConsumosGlobais] = useState([]);
-
-  const [isModalActive, setIsModalActive] = useState(false);
-  const [showFaltasModal, setShowFaltasModal] = useState(false);
-  const [showPerfilModal, setShowPerfilModal] = useState(false); 
-  const [showWhatsappAlert, setShowWhatsappAlert] = useState(false); // PATCH v1.10.0: Alerta Obrigatório de WhatsApp
-  const [carouselIdx, setCarouselIdx] = useState(0);
-
-  const [perfilEdit, setPerfilEdit] = useState({ nome: '', email: '', registro: '', whatsapp: '' });
-
-  const menuItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Início', roles: ['any'] },
-    { id: 'agenda', icon: Calendar, label: 'Agenda', roles: ['any'] },
-    { id: 'pacientes', icon: Users, label: 'Pacientes', roles: ['any'] },
-    { id: 'avaliacoes', icon: Award, label: 'Escalas', roles: ['gestor_clinico', 'fisio', 'to'] },
-    { id: 'financeiro', icon: DollarSign, label: user?.role === 'recepcao' ? 'Estoque' : 'Caixa & Estoque', roles: ['gestor_clinico', 'admin_fin', 'recepcao'] },
-    { id: 'equipe', icon: ShieldCheck, label: 'Equipe', roles: ['gestor_clinico'] },
-  ];
-
-  const navegarPara = (view, params = null) => { 
-    if (params?.pacienteId && user) {
-        registrarLog(user, "Acesso a Prontuário", `Visualizou ficha do paciente ID: ${params.pacienteId}`);
+  // MOTOR DE AUDITORIA (LOGS)
+  const registrarLog = async (acao, detalhes) => {
+    if (!user || !user.uid) return;
+    try {
+        await addDoc(collection(db, "logs"), {
+            usuarioId: user.uid,
+            usuarioNome: user.nome,
+            usuarioRegistro: user.registro || 'N/A',
+            acao,
+            detalhes,
+            data: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error("Erro ao gravar log:", e);
     }
-    setNavParams(params); 
-    setCurrentView(view); 
-    track('Acessou_Modulo', { modulo: view });
   };
 
-  const realizarLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    const form = new FormData(e.target);
-    const email = form.get('email');
-    const senha = form.get('senha');
-    try {
-      const q = query(collection(db, "profissionais"), where("email", "==", email));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const docData = snap.docs[0].data();
-        const userData = { id: snap.docs[0].id, name: docData.nome || 'Equipe', ...docData };
-        if (userData.senhaProvisoria === senha || userData.senhaReal === senha) {
+  const temAcessoClinica = (itemClinicaVinculo) => {
+    if (!user || !user.clinicasAcesso || !itemClinicaVinculo) return false;
+    const vinculoArray = Array.isArray(itemClinicaVinculo) ? itemClinicaVinculo : [itemClinicaVinculo];
+    return vinculoArray.some(c => user.clinicasAcesso.includes(c));
+  };
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, "usuarios", currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = { uid: currentUser.uid, ...userDoc.data() };
           setUser(userData);
-          sessionStorage.setItem('evoluti_user', JSON.stringify(userData));
-          registrarLog(userData, "Login", "Acessou a plataforma");
-          track('Login_Realizado', { role: userData.role });
-        } else { alert("Senha incorreta."); }
-      } else { alert("Usuário não encontrado."); }
-    } catch (error) { alert("Erro de conexão."); }
-    setLoading(false);
-  };
-
-  const salvarPerfilProprio = async (e) => {
-      e.preventDefault();
-      setLoading(true);
-      try {
-          const userRef = doc(db, "profissionais", user.id);
-          await updateDoc(userRef, perfilEdit);
-          const novoUser = { ...user, ...perfilEdit };
-          setUser(novoUser);
-          sessionStorage.setItem('evoluti_user', JSON.stringify(novoUser));
-          registrarLog(user, "Edição de Perfil", "Atualizou seus próprios dados cadastrais");
-          alert("Perfil atualizado com sucesso!");
-          setShowPerfilModal(false);
-      } catch (e) { alert("Erro ao atualizar perfil."); }
-      setLoading(false);
-  };
-
-  const fazerLogout = () => { 
-    if(user) registrarLog(user, "Logout", "Saiu do sistema");
-    localStorage.clear(); sessionStorage.clear(); window.location.reload(); 
-  };
-
-  const alterarStatusGestor = async (profId, novoStatus) => {
-      if (!isSuperGestor) return;
-      try {
-          const profRef = doc(db, "profissionais", profId);
-          await updateDoc(profRef, { role: novoStatus });
-          registrarLog(user, "Alteração de Privilégio", `Mudou papel do profissional ${profId} para ${novoStatus}`);
-          alert("Permissão atualizada!");
-      } catch (e) { alert("Erro ao atualizar."); }
-  };
-
-  const realizarBackupDB = async () => {
-    if (!isSuperGestor) return;
-    if (!window.confirm("Atenção: Você está prestes a exportar toda a base de dados. Deseja continuar?")) return;
-    
-    setLoading(true);
-    try {
-        const payloadJson = { timestampExportacao: new Date().toISOString(), pacientes: [], agendamentos: [], profissionais: [], estoque: [] };
-        let csvPacientes = "ID,Nome,CPF,WhatsApp,Clinicas_Vinculadas\n";
-
-        const pacSnap = await getDocs(collection(db, "pacientes"));
-        for (let pDoc of pacSnap.docs) {
-            let pData = { id: pDoc.id, ...pDoc.data() };
-            
-            const clinicasStr = Array.isArray(pData.clinicaVinculo) ? pData.clinicaVinculo.join(';') : (pData.clinicaVinculo || '');
-            csvPacientes += `${pData.id},${pData.nome},${pData.cpf},${pData.whatsapp},${clinicasStr}\n`;
-
-            const evoSnap = await getDocs(collection(db, "pacientes", pDoc.id, "evolucoes"));
-            pData.evolucoes = evoSnap.docs.map(d => ({id: d.id, ...d.data()}));
-            
-            const planoSnap = await getDocs(collection(db, "pacientes", pDoc.id, "plano_tratamento"));
-            pData.planoTratamento = planoSnap.docs.map(d => ({id: d.id, ...d.data()}));
-
-            payloadJson.pacientes.push(pData);
+          setPerfilForm({ nome: userData.nome, email: userData.email, registro: userData.registro || '' });
+        } else {
+          setUser({ uid: currentUser.uid, email: currentUser.email, role: 'pendente' });
         }
-
-        const jsonBlob = new Blob([JSON.stringify(payloadJson, null, 2)], { type: 'application/json' });
-        const jsonUrl = URL.createObjectURL(jsonBlob);
-        const linkJson = document.createElement('a');
-        linkJson.href = jsonUrl;
-        linkJson.download = `EVOLUTI_FullBackup_JSON_${obterDataLocalISO()}.json`;
-        document.body.appendChild(linkJson);
-        linkJson.click();
-        document.body.removeChild(linkJson);
-
-        const csvBlob = new Blob([csvPacientes], { type: 'text/csv;charset=utf-8;' });
-        const csvUrl = URL.createObjectURL(csvBlob);
-        const linkCsv = document.createElement('a');
-        linkCsv.href = csvUrl;
-        linkCsv.download = `EVOLUTI_TabelaPacientes_${obterDataLocalISO()}.csv`;
-        document.body.appendChild(linkCsv);
-        linkCsv.click();
-        document.body.removeChild(linkCsv);
-
-        registrarLog(user, "Exportação de Banco de Dados", "Realizou o download duplo (JSON/CSV) de backup do sistema");
-        track('Gerou_Backup_Global'); 
-        
-        alert("Backup duplo concluído com sucesso!");
-    } catch(e) {
-        alert("Erro ao realizar backup estrutural.");
-        console.error(e);
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    if (user) {
-      pedirPermissaoNotificacao();
-      
-      const unsubPac = onSnapshot(query(collection(db, "pacientes"), orderBy("nome", "asc")), (snap) => {
-          setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => temAcessoClinica(user.clinicasAcesso, p.clinicaVinculo)));
-      });
-      const unsubAg = onSnapshot(collection(db, "agendamentos"), (snap) => {
-        setAgendamentosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => temAcessoClinica(user.clinicasAcesso, a.clinicaVinculo)));
-      });
-      const unsubEx = onSnapshot(collectionGroup(db, "plano_tratamento"), (snap) => {
-        setExerciciosGlobais(snap.docs.map(d => ({ id: d.id, pacienteId: d.ref.parent.parent.id, ...d.data() })));
-      });
-
-      let unsubLogs = () => {};
-      let unsubProfis = () => {};
-      let unsubEstoque = () => {};
-      let unsubConsumos = () => {};
-
-      if (isSuperGestor) {
-        unsubLogs = onSnapshot(query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(50)), (snap) => {
-            setLogsSistema(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-      }
-
-      if (isSuperGestor || user.role === 'recepcao' || user.role === 'gestor_clinico' || user.role === 'admin_fin') {
-        unsubProfis = onSnapshot(collection(db, "profissionais"), (snap) => {
-            setEquipeCompleta(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        unsubEstoque = onSnapshot(collection(db, "estoque"), (snap) => {
-            setEstoqueGeral(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => temAcessoClinica(user.clinicasAcesso, e.clinicaVinculo)));
-        });
-        unsubConsumos = onSnapshot(collection(db, "consumos"), (snap) => {
-            setConsumosGlobais(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => temAcessoClinica(user.clinicasAcesso, c.clinicaVinculo)));
-        });
-      }
-
-      return () => { unsubPac(); unsubAg(); unsubEx(); unsubLogs(); unsubProfis(); unsubEstoque(); unsubConsumos(); };
-    }
-  }, [user, isSuperGestor]);
-
-  // PATCH v1.10.0: Interceptador de Alerta de WhatsApp
-  useEffect(() => {
-      if (user && (!user.whatsapp || user.whatsapp.trim() === '')) {
-          setShowWhatsappAlert(true);
       } else {
-          setShowWhatsappAlert(false);
+        setUser(null);
       }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user || user.role === 'pendente' || user.role === 'oculto') return;
+
+    const unsubAgendamentos = onSnapshot(query(collection(db, "agendamentos")), (snap) => {
+      const todosAgendamentos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const agendamentosFiltrados = todosAgendamentos.filter(ag => temAcessoClinica(ag.clinicaVinculo));
+      setAgendamentosGlobais(agendamentosFiltrados);
+    });
+
+    const unsubPacientes = onSnapshot(query(collection(db, "pacientes")), (snap) => {
+      const todosPacientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const pacientesFiltrados = todosPacientes.filter(pac => temAcessoClinica(pac.clinicaVinculo));
+      setPacientesGlobais(pacientesFiltrados);
+    });
+
+    let unsubLogs = () => {};
+    if (isSuperGestor) {
+        unsubLogs = onSnapshot(query(collection(db, "logs"), orderBy("data", "desc")), (snap) => {
+            setLogsAuditoria(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+    }
+
+    return () => {
+      unsubAgendamentos();
+      unsubPacientes();
+      unsubLogs();
+    };
   }, [user]);
 
-  const hasAccess = (roles) => user && (roles.includes('any') || roles.includes(user.role));
+  // MOTOR DE PUSH NOTIFICATIONS
+  useEffect(() => {
+    if (!user || user.role === 'pendente') return;
+    
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
 
-  const renderRecepcaoDashboard = () => {
-      const hojeIso = obterDataLocalISO(new Date());
-      const agendaHoje = agendamentosGlobais.filter(a => a.data === hojeIso).sort((a,b) => getMinutos(a.hora) - getMinutos(b.hora));
-      
-      const ativosHoje = agendaHoje.filter(a => a.status !== 'cancelado' && a.status !== 'realizado');
-      const realizadosHoje = agendaHoje.filter(a => a.status === 'realizado');
-      const canceladosHoje = agendaHoje.filter(a => a.status === 'cancelado');
-      const estoqueBaixo = estoqueGeral.filter(e => e.quantidade <= 5);
+    const hoje = new Date();
+    hoje.setHours(0,0,0,0);
 
-      const anunciarChegada = async (ag) => {
-          try {
-              await updateDoc(doc(db, "agendamentos", ag.id), { statusRecepcao: 'aguardando' });
-              const prof = equipeCompleta.find(p => p.nome === ag.profissional || p.id === ag.profissionalId);
-              dispararPush("Paciente Aguardando", `O paciente ${ag.paciente} já está na recepção para o atendimento das ${ag.hora}.`);
-              
-              const numero = prof?.whatsapp ? prof.whatsapp.replace(/\D/g, '') : '';
-              if (numero) {
-                  // PATCH v1.10.0: Template de WhatsApp Atualizado
-                  const primeiroNome = prof.nome ? prof.nome.split(' ')[0] : 'Profissional';
-                  const texto = encodeURIComponent(`Dr.(a) ${primeiroNome}. O paciente ${ag.paciente} chegou e lhe aguarda na recepção.`);
-                  window.open(`https://wa.me/55${numero}?text=${texto}`, '_blank');
-              } else {
-                  alert(`O profissional ${ag.profissional} não possui um número de WhatsApp cadastrado no sistema.`);
-              }
-          } catch (e) {
-              alert("Erro ao sinalizar chegada.");
+    const qAgenda = query(collection(db, "agendamentos"), where("profissionalId", "==", user.uid));
+    
+    const unsubNotificacoes = onSnapshot(qAgenda, (snapshot) => {
+       snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+             const ag = change.doc.data();
+             const agData = new Date(ag.data);
+             if (agData >= hoje && change.doc.metadata.hasPendingWrites === false) {
+                 if (Notification.permission === 'granted') {
+                     new Notification("Novo Agendamento! 📅", {
+                         body: `${ag.pacienteNome} foi agendado para si.`,
+                         icon: "/favicon.ico" 
+                     });
+                 }
+             }
           }
-      };
+          if (change.type === 'modified') {
+              const agAntes = change.doc.data();
+              if (agAntes.status === 'cancelado') {
+                  if (Notification.permission === 'granted') {
+                     new Notification("Sessão Cancelada ⚠️", {
+                         body: `A sessão de ${agAntes.pacienteNome} foi cancelada.`,
+                         icon: "/favicon.ico" 
+                     });
+                 }
+              }
+          }
+       });
+    });
 
-      return (
-          <div className="space-y-6 animate-in fade-in duration-500">
-             <header>
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Centro de Recepção</h1>
-                <p className="text-slate-500 font-medium">Logística de pacientes e organização da clínica.</p>
-             </header>
+    return () => unsubNotificacoes();
+  }, [user]);
 
-             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                 <div className="lg:col-span-1 space-y-6 flex flex-col">
-                     <div className="bg-red-50 border border-red-200 rounded-[24px] p-6 shadow-sm flex-1">
-                         <h3 className="font-black text-red-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide">
-                             <AlertTriangle size={18}/> Alertas do Dia
-                         </h3>
-                         {canceladosHoje.length > 0 ? (
-                             <div className="space-y-3">
-                                 {canceladosHoje.map(ag => (
-                                     <div key={ag.id} className="bg-white border border-red-100 p-3 rounded-xl shadow-sm">
-                                         <p className="text-xs font-black text-slate-800 line-through truncate">{ag.paciente}</p>
-                                         <p className="text-[10px] font-bold text-red-600 uppercase mt-1">{ag.hora} • {ag.motivoCancelamento || 'Cancelado'}</p>
-                                     </div>
-                                 ))}
-                             </div>
-                         ) : (
-                             <p className="text-xs font-bold text-red-400">Nenhum cancelamento ou falta registrada hoje.</p>
-                         )}
-                     </div>
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        if (clinicasSelecionadas.length === 0) {
+            return setAuthError("Selecione pelo menos uma clínica de atuação.");
+        }
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await setDoc(doc(db, "usuarios", userCredential.user.uid), {
+          nome,
+          email,
+          registro,
+          clinicasAcesso: clinicasSelecionadas,
+          role: 'pendente',
+          dataCadastro: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      setAuthError('Erro na autenticação. Verifique os seus dados.');
+      console.error(error);
+    }
+  };
 
-                     <div className="bg-orange-50 border border-orange-200 rounded-[24px] p-6 shadow-sm flex-1">
-                         <h3 className="font-black text-orange-800 flex items-center gap-2 mb-4 text-sm uppercase tracking-wide">
-                             <Package size={18}/> Estoque Crítico
-                         </h3>
-                         {estoqueBaixo.length > 0 ? (
-                             <div className="space-y-3">
-                                 {estoqueBaixo.map(item => (
-                                     <div key={item.id} className="flex justify-between items-center bg-white border border-orange-100 p-3 rounded-xl shadow-sm">
-                                         <p className="text-xs font-black text-slate-800 truncate pr-2">{item.nome}</p>
-                                         <span className="text-[10px] font-black bg-orange-100 text-orange-700 px-2 py-1 rounded whitespace-nowrap">Qtd: {item.quantidade}</span>
-                                     </div>
-                                 ))}
-                             </div>
-                         ) : (
-                             <p className="text-xs font-bold text-orange-400">Todos os materiais estão com nível de estoque adequado.</p>
-                         )}
-                     </div>
-                 </div>
-
-                 <div className="lg:col-span-3 bg-white rounded-[32px] border border-slate-200 shadow-sm p-6 flex flex-col">
-                     <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                         <h3 className="font-black text-[#0F214A] text-xl flex items-center gap-2">
-                             <Clock className="text-[#00A1FF]"/> Linha do Tempo (Hoje)
-                         </h3>
-                         <div className="flex gap-2">
-                             <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border border-blue-100">
-                                 {ativosHoje.length} Pendentes
-                             </span>
-                             <span className="text-[10px] font-black bg-green-50 text-green-600 px-3 py-1.5 rounded-lg border border-green-100">
-                                 {realizadosHoje.length} Atendidos
-                             </span>
-                         </div>
-                     </div>
-
-                     <div className="overflow-y-auto max-h-[600px] custom-scrollbar pr-2 space-y-3">
-                         {ativosHoje.length > 0 ? ativosHoje.map(ag => {
-                             const isAguardando = ag.statusRecepcao === 'aguardando';
-                             return (
-                                 <div key={ag.id} className={`flex flex-col md:flex-row md:items-center justify-between p-4 rounded-2xl border transition-all ${isAguardando ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-slate-50 border-slate-100 hover:border-[#00A1FF]'}`}>
-                                     
-                                     <div className="flex items-center gap-4 mb-3 md:mb-0">
-                                         <div className={`px-3 py-2 rounded-xl text-center min-w-[70px] ${isAguardando ? 'bg-amber-200 text-amber-900' : 'bg-[#0F214A] text-white'}`}>
-                                             <span className="block text-sm font-black">{ag.hora}</span>
-                                         </div>
-                                         <div>
-                                             <h4 className="font-black text-slate-800 text-base">{ag.paciente}</h4>
-                                             <div className="flex items-center gap-2 mt-1">
-                                                 <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><Award size={12}/> {ag.profissional}</span>
-                                                 <span className="text-slate-300">•</span>
-                                                 <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1"><Building2 size={12}/> {ag.local}</span>
-                                             </div>
-                                         </div>
-                                     </div>
-
-                                     <div className="flex items-center gap-2 w-full md:w-auto">
-                                         <button onClick={() => navegarPara('pacientes', {pacienteId: ag.pacienteId})} className="flex-1 md:flex-none p-2.5 bg-white border border-slate-200 text-slate-500 hover:text-[#00A1FF] rounded-xl transition-colors flex justify-center" title="Abrir Ficha Clínica">
-                                             <Users size={18}/>
-                                         </button>
-                                         <button onClick={() => anunciarChegada(ag)} disabled={isAguardando} className={`flex-1 md:flex-none px-5 py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-sm ${isAguardando ? 'bg-amber-100 text-amber-600 cursor-not-allowed' : 'bg-[#00A1FF] text-white hover:bg-blue-600'}`}>
-                                             {isAguardando ? <><CheckCircle2 size={16}/> Em Espera</> : <><BellRing size={16}/> Anunciar Chegada</>}
-                                         </button>
-                                     </div>
-                                 </div>
-                             );
-                         }) : (
-                             <div className="text-center py-20">
-                                 <CheckCircle2 size={40} className="mx-auto text-green-400 mb-3"/>
-                                 <p className="font-black text-slate-500">A fila de pacientes está limpa para hoje.</p>
-                             </div>
-                         )}
-                     </div>
-                 </div>
-             </div>
-          </div>
+  const toggleClinicaSelecionada = (clinica) => {
+      setClinicasSelecionadas(prev => 
+          prev.includes(clinica) ? prev.filter(c => c !== clinica) : [...prev, clinica]
       );
   };
 
+  const salvarPerfil = async () => {
+      if(!perfilForm.nome.trim()) return alert("O nome não pode estar vazio.");
+      setSalvandoPerfil(true);
+      try {
+          await updateDoc(doc(db, "usuarios", user.uid), {
+              nome: perfilForm.nome,
+              registro: perfilForm.registro
+          });
+          
+          if (auth.currentUser) {
+              await updateProfile(auth.currentUser, { displayName: perfilForm.nome });
+          }
+
+          setUser(prev => ({ ...prev, nome: perfilForm.nome, registro: perfilForm.registro }));
+          registrarLog("Edição de Perfil", "O usuário atualizou os seus próprios dados cadastrais.");
+          
+          alert("Perfil atualizado com sucesso!");
+          setShowPerfilModal(false);
+      } catch (e) {
+          alert("Erro ao atualizar o perfil.");
+          console.error(e);
+      }
+      setSalvandoPerfil(false);
+  };
+
+  const handleLogout = () => signOut(auth);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // TELA DE LOGIN / REGISTRO COM NOVO DESIGN PACIENTE-LIKE
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 animate-in fade-in duration-700">
+        <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+          
+          {/* Cabeçalho do Card (Estilo Pacientes) */}
+          <div className="p-8 bg-slate-900 text-white flex flex-col items-center justify-center text-center">
+             <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mb-6 shadow-xl rotate-3">
+               <Activity size={40} className="text-white animate-pulse" />
+             </div>
+             <h1 className="text-4xl font-black tracking-tight">Evoluti Fisio</h1>
+             <p className="text-blue-200 mt-2 font-medium text-sm">Gestão Clínica de Alta Performance</p>
+          </div>
+
+          {/* Corpo do Formulário */}
+          <div className="p-8 flex-1 bg-white">
+            <h2 className="text-2xl font-black text-slate-800 mb-6 text-center">
+              {isLogin ? 'Iniciar Sessão' : 'Criar Conta'}
+            </h2>
+            
+            <form onSubmit={handleAuth} className="space-y-4">
+              {!isLogin && (
+                <>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Nome Completo</label>
+                    <input 
+                      type="text" 
+                      required 
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-800 p-4 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all"
+                      placeholder="Dr. João Silva"
+                      value={nome} 
+                      onChange={e => setNome(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block tracking-widest">CREFITO / Registro (Opcional)</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-800 p-4 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all"
+                      placeholder="Ex: 123456-F"
+                      value={registro} 
+                      onChange={e => setRegistro(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Clínica de Atuação (Obrigatório)</label>
+                    <div className="flex gap-2">
+                        <button type="button" onClick={() => toggleClinicaSelecionada('vida')} className={`flex-1 py-3 rounded-2xl font-bold border-2 transition-all ${clinicasSelecionadas.includes('vida') ? 'bg-blue-50 border-blue-600 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:border-blue-300'}`}>
+                            Clínica Vida
+                        </button>
+                        <button type="button" onClick={() => toggleClinicaSelecionada('reabtech')} className={`flex-1 py-3 rounded-2xl font-bold border-2 transition-all ${clinicasSelecionadas.includes('reabtech') ? 'bg-blue-50 border-blue-600 text-blue-700' : 'bg-white border-slate-200 text-slate-400 hover:border-blue-300'}`}>
+                            Reabtech / Relief
+                        </button>
+                    </div>
+                  </div>
+                </>
+              )}
+              
+              <div>
+                 <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block tracking-widest">E-mail Profissional</label>
+                 <input 
+                  type="email" 
+                  required 
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 p-4 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all"
+                  placeholder="seu@email.com"
+                  value={email} 
+                  onChange={e => setEmail(e.target.value)} 
+                />
+              </div>
+              
+              <div>
+                 <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block tracking-widest">Palavra-passe</label>
+                 <input 
+                  type="password" 
+                  required 
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 p-4 rounded-2xl outline-none focus:border-blue-500 font-bold transition-all"
+                  placeholder="••••••••"
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                />
+              </div>
+
+              {authError && <p className="text-red-500 text-sm font-bold bg-red-50 p-3 rounded-xl border border-red-100">{authError}</p>}
+              
+              <button 
+                type="submit" 
+                className="w-full bg-[#0F214A] hover:bg-blue-700 text-white font-black p-4 rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                {isLogin ? 'Entrar no Sistema' : 'Registar Conta'}
+              </button>
+            </form>
+          </div>
+          
+          {/* Rodapé do Card */}
+          <div className="p-6 bg-slate-50 border-t border-slate-100 text-center flex flex-col items-center justify-center gap-2">
+            <button 
+              onClick={() => setIsLogin(!isLogin)} 
+              className="text-slate-500 hover:text-blue-600 font-bold text-sm transition-colors"
+            >
+              {isLogin ? 'Não tem conta? Registe-se' : 'Já tem conta? Iniciar Sessão'}
+            </button>
+            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest border border-slate-200 px-3 py-1 rounded-full mt-2">
+              {APP_VERSION}
+            </span>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role === 'pendente') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-[32px] shadow-xl max-w-md text-center border border-slate-200">
+          <ShieldAlert className="w-20 h-20 text-amber-500 mx-auto mb-6" />
+          <h2 className="text-2xl font-black text-slate-800 mb-2">Conta em Análise</h2>
+          <p className="text-slate-600 font-medium mb-8">A sua conta foi criada com sucesso, mas precisa ser aprovada por um Gestor antes de acessar o sistema.</p>
+          <button onClick={handleLogout} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black w-full hover:bg-slate-800 transition-colors">
+            Sair e Voltar mais tarde
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role === 'oculto') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="text-center">
+          <Activity className="w-16 h-16 text-slate-700 mx-auto mb-4" />
+          <p className="text-slate-500 font-medium">Acesso suspenso.</p>
+          <button onClick={handleLogout} className="mt-4 text-blue-500 font-bold">Voltar</button>
+        </div>
+      </div>
+    );
+  }
+
+  const menuItems = [
+    { id: 'inicio', label: 'Início', icon: Activity },
+    { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+    { id: 'pacientes', label: 'Pacientes', icon: Users },
+    { id: 'avaliacoes', label: 'Avaliações Clínicas', icon: FileText },
+    { id: 'financeiro', label: user.role === 'recepcao' ? 'Estoque' : 'Caixa & Estoque', icon: DollarSign },
+    ...(user.role === 'gestor_clinico' ? [{ id: 'equipe', label: 'Equipe', icon: Settings }] : [])
+  ];
+
+  // GUIÕES DO TUTORIAL EVO
+  const tutoriais = {
+      gestor_clinico: [
+          { msg: "Olá! Sou o Evo. Como Gestor, você tem visão total. No 'Início', acompanha os totais da clínica, cancelamentos críticos e a sua fila de pacientes (se atender)." },
+          { msg: "Em 'Agenda', você controla as marcações de toda a equipe e vê bolinhas piscantes nas sessões pendentes de evolução." },
+          { msg: "Em 'Pacientes', o prontuário é completo: Evoluções SOAP, Planejamento de Conduta Global e a nova aba de Dashboards de Escalas." },
+          { msg: "Em 'Caixa & Estoque', o fluxo de caixa é gerado dinamicamente pela agenda. Use o botão do Olho para censurar valores perto de clientes." },
+          { msg: "E na 'Equipe', você edita acessos e exporta o Backup Global do Firebase. Explore o sistema!" }
+      ],
+      recepcao: [
+          { msg: "Olá! Sou o Evo. No seu painel de 'Início', você acompanha a Fila de Chegada da recepção e os totais operacionais do dia." },
+          { msg: "Em 'Agenda', você marca e desmarca pacientes. Para agendar várias sessões de uma vez, use o botão 'Em Lote' no topo do formulário." },
+          { msg: "Em 'Pacientes', você atualiza cadastros e pode gerar PDFs de cobrança na aba Financeira do paciente." },
+          { msg: "Em 'Estoque', lance os insumos consumidos. Não se preocupe, a visão financeira (valores em R$) está oculta para o seu perfil. Bom trabalho!" }
+      ],
+      saude: [
+          { msg: "Olá! Sou o Evo, seu assistente clínico. Aqui no 'Início', você vê o seu Carrossel de Próximos Pacientes (arraste para os lados)." },
+          { msg: "Na 'Agenda', você vê a sua programação. Bolinhas vermelhas piscando significam que você esqueceu de preencher a evolução daquela sessão!" },
+          { msg: "Em 'Pacientes', na aba Plano de Tratamento, você busca exercícios do nosso Banco Global e agenda a conduta. Na aba Evolução, clique no botão para puxar essa conduta automaticamente!" },
+          { msg: "E nas 'Avaliações Clínicas', escolha testes validados (ex: TUG, Berg) e salve os resultados direto no Dashboard do paciente. Boa sorte!" }
+      ]
+  };
+
+  const myTutorial = tutoriais[user.role] || tutoriais['saude'];
+
   const renderDashboard = () => {
-    if (user.role === 'recepcao') return renderRecepcaoDashboard();
+    const hojeDate = new Date();
+    hojeDate.setHours(0,0,0,0);
+    const agendamentosHoje = agendamentosGlobais.filter(ag => {
+        const d = new Date(ag.data);
+        d.setHours(0,0,0,0);
+        return d.getTime() === hojeDate.getTime();
+    });
 
-    const hojeIso = obterDataLocalISO(new Date());
-    const mesAtualIso = hojeIso.substring(0, 7); 
-    const minutosAtuais = new Date().getHours() * 60 + new Date().getMinutes();
-    
-    const agendaMesProfissional = agendamentosGlobais.filter(a => 
-        a.profissionalId === user.id && 
-        a.data.startsWith(mesAtualIso) && 
-        a.status !== 'cancelado'
-    );
-
-    const sessoesElegiveis = agendaMesProfissional.filter(a => 
-        a.data < hojeIso || (a.data === hojeIso && getMinutos(a.hora) <= minutosAtuais)
-    );
-
-    const sessoesFuturas = agendaMesProfissional.filter(a => 
-        a.data > hojeIso || (a.data === hojeIso && getMinutos(a.hora) > minutosAtuais)
-    );
-
-    const totalMetasMes = sessoesElegiveis.length;
-    const totalEvoluidas = sessoesElegiveis.filter(a => a.status === 'realizado').length;
-    const progressoMetaSOAP = totalMetasMes > 0 ? Math.round((totalEvoluidas / totalMetasMes) * 100) : 0;
-
-    const minhaAgenda7Dias = agendamentosGlobais
-      .filter(a => a.profissionalId === user.id && a.status !== 'cancelado' && a.status !== 'realizado')
-      .sort((a, b) => a.data.localeCompare(b.data) || getMinutos(a.hora) - getMinutos(b.hora));
-
-    const proximosPendentesMeus = minhaAgenda7Dias.filter(a => a.data > hojeIso || (a.data === hojeIso && getMinutos(a.hora) >= minutosAtuais - 30));
-    const proximoAtendimento = proximosPendentesMeus[carouselIdx] || null;
-
-    const exerciciosDaSessao = proximoAtendimento?.exerciciosPlanejados || [];
-    const planoGeralPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
-    const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoGeralPaciente;
-    
-    // VARIÁVEIS GLOBAIS DE GESTÃO DO MÊS
-    const agendaMesGlobal = agendamentosGlobais.filter(a => a.data && a.data.startsWith(mesAtualIso));
-    const faltasCriticasMes = agendaMesGlobal.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
-    const taxaCritica = agendaMesGlobal.length > 0 ? ((faltasCriticasMes.length / agendaMesGlobal.length) * 100).toFixed(1) : 0;
-
-    const faturamentoSessoesMes = agendaMesGlobal.filter(a => a.status === 'realizado').reduce((acc, a) => {
-        const pac = pacientes.find(p => p.id === a.pacienteId);
-        return acc + Number(pac?.valor || 0);
+    const faturamentoBruto = agendamentosHoje.reduce((acc, curr) => {
+        if(curr.status === 'realizado') {
+            const pac = pacientesGlobais.find(p => p.id === curr.pacienteId);
+            const valor = curr.valorSessao ? parseFloat(curr.valorSessao) : (pac ? parseFloat(pac.valorBase || 0) : 0);
+            return acc + valor;
+        }
+        return acc;
     }, 0);
+
+    const totalCancelamentos = agendamentosGlobais.filter(ag => ag.status === 'cancelado').length;
+    const proximosPendentesMeus = agendamentosGlobais.filter(ag => ag.profissionalId === user.uid && new Date(ag.data) >= hojeDate && ag.status !== 'realizado' && ag.status !== 'cancelado').sort((a,b) => new Date(a.data) - new Date(b.data));
+
+    // Lógica do Carrossel (Fila Pessoal)
+    const [indiceFila, setIndiceFila] = useState(0);
+    const proximoPaciente = proximosPendentesMeus[indiceFila];
     
-    const faturamentoInsumosMes = consumosGlobais.filter(c => c.data && c.data.startsWith(mesAtualIso)).reduce((acc, c) => acc + Number(c.precoTotal || 0), 0);
-    const faturamentoTotalMes = faturamentoSessoesMes + faturamentoInsumosMes;
+    const podeIniciarAtendimento = () => {
+        if (!proximoPaciente) return false;
+        const horaSessao = new Date(proximoPaciente.data).getTime();
+        const agora = new Date().getTime();
+        return agora >= horaSessao; 
+    };
+
+    const isRecepcao = user.role === 'recepcao';
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Painel de {user.role === 'gestor_clinico' ? 'Gestão' : 'Atendimento'}</h1>
-                    <p className="text-slate-500 font-medium">Bom dia, {user.nome.split(' ')[0]}. {isSuperGestor && "Super Usuário Ativo."}</p>
-                </div>
-            </header>
+      <div className="space-y-10 animate-in fade-in duration-500">
+        <header>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Painel de Controle</h1>
+          <p className="text-slate-500 font-medium mt-1">Bem-vindo(a) de volta, {user.nome.split(' ')[0]}!</p>
+        </header>
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 bg-[#0F214A] rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden min-h-[350px] flex flex-col justify-between">
-                    {proximosPendentesMeus.length > 1 && (
-                        <div className="absolute right-8 top-8 flex gap-2 z-20">
-                            <button onClick={() => setCarouselIdx(prev => Math.max(0, prev - 1))} className="p-2 bg-white/10 rounded-full border border-white/10 hover:bg-white/20 transition-colors"><ChevronLeft/></button>
-                            <button onClick={() => setCarouselIdx(prev => Math.min(proximosPendentesMeus.length - 1, prev + 1))} className="p-2 bg-white/10 rounded-full border border-white/10 hover:bg-white/20 transition-colors"><ChevronRight/></button>
+        {isRecepcao && (
+            <div className="space-y-8">
+               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-4"><Users className="text-blue-600"/> Visão Operacional (Recepção)</h3>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-center relative overflow-hidden">
+                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Total de Sessões Hoje</p>
+                    <h4 className="text-5xl font-black text-slate-800">{agendamentosHoje.length}</h4>
+                    <Activity className="absolute -right-4 -bottom-4 w-24 h-24 text-slate-50 opacity-50" />
+                  </div>
+                  <div className="bg-slate-900 text-white p-8 rounded-[32px] shadow-xl relative overflow-hidden">
+                    <p className="text-[10px] font-black text-blue-300 uppercase mb-2">Concluídos</p>
+                    <h4 className="text-5xl font-black">{agendamentosHoje.filter(a => a.status === 'realizado').length}</h4>
+                    <CheckCircle2 className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-10" />
+                  </div>
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-center">
+                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Insumos Lançados Hoje</p>
+                    <h4 className="text-5xl font-black text-slate-800 text-center">-</h4>
+                  </div>
+               </div>
+
+               <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-200">
+                  <h4 className="font-black text-slate-800 mb-6 flex items-center gap-2"><Clock size={20} className="text-amber-500"/> Fila de Chegada (Clínica)</h4>
+                  <div className="space-y-4">
+                     {agendamentosHoje.filter(a => a.status === 'agendado').slice(0, 5).map(ag => (
+                        <div key={ag.id} className="bg-white p-4 rounded-2xl flex justify-between items-center border border-slate-100 shadow-sm">
+                           <div className="flex items-center gap-4">
+                             <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center font-black text-amber-600">
+                                {new Date(ag.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute:'2-digit' })}
+                             </div>
+                             <div>
+                                <h5 className="font-black text-slate-800">{ag.pacienteNome}</h5>
+                                <p className="text-xs font-bold text-slate-400">Com: {ag.profissionalNome}</p>
+                             </div>
+                           </div>
+                           <button onClick={() => setActiveTab('agenda')} className="text-blue-600 font-black text-xs bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors">
+                              Ir p/ Agenda
+                           </button>
                         </div>
-                    )}
-                    <div className="relative z-10">
-                        <p className="text-[10px] font-black uppercase text-[#00A1FF] mb-4 flex items-center gap-2"><Clock size={14}/> Fila Pessoal ({carouselIdx + 1}/{proximosPendentesMeus.length})</p>
-                        {proximoAtendimento ? (
-                            <>
-                                <h2 className="text-4xl md:text-5xl font-black mb-3 flex items-center gap-4">
-                                    {proximoAtendimento.paciente} 
-                                    {proximoAtendimento.statusRecepcao === 'aguardando' && <span className="bg-[#FFCC00] text-[#0F214A] text-xs font-black px-3 py-1 rounded-full animate-pulse border border-yellow-400 align-middle">Na Recepção</span>}
-                                </h2>
-                                <div className="flex flex-wrap gap-3 mb-6">
-                                    <span className="bg-[#00A1FF] text-white px-3 py-1.5 rounded-xl font-black text-sm">{proximoAtendimento.hora}</span>
-                                    <span className="bg-white/10 px-3 py-1.5 rounded-xl font-bold text-sm border border-white/10">{proximoAtendimento.local}</span>
-                                </div>
-                                <div className="bg-white/5 border border-white/10 rounded-[24px] p-5 backdrop-blur-sm max-w-xl">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
-                                        {exerciciosDaSessao.length > 0 ? <><Target size={14} className="text-[#FFCC00]"/> Conduta Programada</> : <><Dumbbell size={14}/> Plano de Tratamento</>}
-                                    </p>
-                                    <div className="space-y-2">
-                                        {listaExibicao.map((ex, i) => (
-                                            <div key={i} className="flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0">
-                                                <span className="font-bold text-slate-200">{ex.nome}</span>
-                                                <span className="text-[10px] font-black bg-white/10 px-2 py-0.5 rounded text-[#00A1FF]">{ex.series}x{ex.reps} {ex.carga}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </>
-                        ) : <h2 className="text-3xl font-black text-slate-400">Sem sessões pendentes.</h2>}
-                    </div>
-                    {proximoAtendimento && <button onClick={() => navegarPara('pacientes', { pacienteId: proximoAtendimento.pacienteId, atualizarStatusAgendamento: proximoAtendimento.id })} className="relative z-10 mt-8 bg-[#FFCC00] text-[#0F214A] px-10 py-4 rounded-2xl font-black text-sm w-fit flex items-center gap-3 hover:scale-105 transition-transform">Preparar Atendimento <ArrowRight/></button>}
-                    <HeartPulse className="absolute -right-10 -bottom-10 text-white/5 w-64 h-64" />
-                </div>
+                     ))}
+                     {agendamentosHoje.filter(a => a.status === 'agendado').length === 0 && (
+                         <p className="text-slate-400 text-sm font-bold text-center py-6">Nenhum paciente aguardando no momento.</p>
+                     )}
+                  </div>
+               </div>
+            </div>
+        )}
 
-                <div className="flex flex-col gap-4">
-                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-[32px] border border-blue-200 shadow-sm flex flex-col justify-between">
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <p className="text-[10px] font-black uppercase text-[#00A1FF] tracking-widest flex items-center gap-1"><TrendingUp size={14}/> Meta SOAPER Mensal</p>
-                                <span className="text-xs font-black text-blue-900 bg-white px-2 py-1 rounded-lg shadow-sm">{mesAtualIso.split('-').reverse().join('/')}</span>
+        {!isRecepcao && (
+            <div className="space-y-8">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-4"><Stethoscope className="text-blue-600"/> Suas Atividades Clínicas Pessoais</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-gradient-to-br from-[#0F214A] to-blue-900 rounded-[32px] p-8 shadow-2xl relative overflow-hidden flex flex-col justify-between min-h-[300px] text-white">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest mb-1">Seu Próximo Paciente</p>
+                                {proximoPaciente ? (
+                                    <>
+                                        <h3 className="text-4xl font-black mb-1">{proximoPaciente.pacienteNome}</h3>
+                                        <p className="text-blue-300 font-medium text-sm">
+                                            {new Date(proximoPaciente.data).toLocaleDateString('pt-BR')} às {new Date(proximoPaciente.data).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <h3 className="text-2xl font-black">Fila Livre!</h3>
+                                )}
                             </div>
-                            <h3 className="text-4xl font-black text-[#0F214A]">{progressoMetaSOAP}%</h3>
-                            <p className="text-xs font-bold text-slate-500 mt-1">{totalEvoluidas} evoluídas de {totalMetasMes} sessões passadas.</p>
                             
-                            {sessoesFuturas.length > 0 && (
-                                <p className="text-[10px] font-bold text-slate-400 mt-2 bg-white/60 p-2 rounded-lg border border-slate-100 flex items-center gap-1">
-                                    <Calendar size={12}/> Restam {sessoesFuturas.length} agendadas este mês.
-                                </p>
+                            {proximosPendentesMeus.length > 1 && (
+                                <div className="flex items-center gap-2 bg-white/10 rounded-full p-1 border border-white/20">
+                                   <button onClick={() => setIndiceFila(prev => Math.max(0, prev - 1))} disabled={indiceFila === 0} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-30 transition-colors">&larr;</button>
+                                   <span className="text-xs font-black px-2">{indiceFila + 1} / {proximosPendentesMeus.length}</span>
+                                   <button onClick={() => setIndiceFila(prev => Math.min(proximosPendentesMeus.length - 1, prev + 1))} disabled={indiceFila === proximosPendentesMeus.length - 1} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-30 transition-colors">&rarr;</button>
+                                </div>
                             )}
                         </div>
-                        <div className="w-full bg-blue-100 rounded-full h-2.5 mt-6 overflow-hidden">
-                            <div className={`h-2.5 rounded-full transition-all duration-1000 ${progressoMetaSOAP >= 90 ? 'bg-green-500' : progressoMetaSOAP >= 50 ? 'bg-[#00A1FF]' : 'bg-orange-400'}`} style={{ width: `${progressoMetaSOAP}%` }}></div>
+
+                        {proximoPaciente && (
+                            <div className="bg-white/10 border border-white/20 p-4 rounded-2xl mb-6 backdrop-blur-sm">
+                                <h4 className="text-xs font-black text-blue-200 uppercase mb-3 flex items-center gap-2">
+                                    {proximoPaciente.condutaModulada ? <Target size={14} className="text-amber-400"/> : <Dumbbell size={14}/>} 
+                                    {proximoPaciente.condutaModulada ? 'Conduta Modulada p/ Sessão' : 'Plano de Tratamento Vigente'}
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {proximoPaciente.condutaModulada ? (
+                                        proximoPaciente.condutaModulada.map((c, idx) => (
+                                            <span key={idx} className="text-xs font-bold bg-white/20 px-3 py-1.5 rounded-lg border border-white/10">{c.nome}</span>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs font-medium opacity-80 italic">Abra o prontuário para revisar o plano completo.</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex gap-4 relative z-10">
+                            <button 
+                                onClick={() => setActiveTab('pacientes')}
+                                disabled={!proximoPaciente}
+                                className={`flex-1 ${podeIniciarAtendimento() ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-white hover:bg-slate-50 text-slate-900'} py-4 rounded-2xl font-black flex justify-center items-center gap-2 transition-all disabled:opacity-50`}
+                            >
+                                <Search size={18}/> {podeIniciarAtendimento() ? 'Iniciar Atendimento' : 'Preparar Atendimento'}
+                            </button>
                         </div>
                     </div>
-                    
-                    <div className="flex gap-4">
-                        <div onClick={() => navegarPara('agenda')} className="bg-white p-6 rounded-[32px] border shadow-sm cursor-pointer hover:border-[#00A1FF] transition-colors flex-1 flex flex-col justify-center">
-                            <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Agenda Hoje</p>
-                            <h3 className="text-3xl font-black text-[#0F214A]">{agendamentosGlobais.filter(a => a.profissionalId === user.id && a.data === hojeIso && a.status !== 'cancelado').length}</h3>
-                        </div>
-                        <div onClick={() => navegarPara('pacientes')} className="bg-amber-50 p-6 rounded-[32px] border border-amber-100 shadow-sm cursor-pointer hover:bg-amber-100 transition-colors flex-1 flex flex-col justify-center">
-                            <p className="text-[10px] font-black uppercase text-amber-600 mb-2">Atrasadas</p>
-                            <h3 className="text-3xl font-black text-amber-600">{agendamentosGlobais.filter(a => a.profissionalId === user.id && a.data <= hojeIso && a.status === 'pendente').length}</h3>
-                        </div>
+
+                    <div className="flex flex-col gap-6">
+                        <button onClick={() => setActiveTab('agenda')} className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex-1 flex flex-col justify-center text-left hover:border-blue-500 transition-colors group">
+                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Suas Sessões Hoje</p>
+                            <h4 className="text-4xl font-black text-slate-800">{proximosPendentesMeus.filter(ag => new Date(ag.data).getTime() >= hojeDate.getTime() && new Date(ag.data).getTime() < hojeDate.getTime() + 86400000).length}</h4>
+                            <p className="text-xs font-bold text-blue-600 mt-2 flex items-center gap-1 group-hover:translate-x-1 transition-transform">Ver na Agenda &rarr;</p>
+                        </button>
+                        <button onClick={() => setActiveTab('agenda')} className="bg-amber-50 p-8 rounded-[32px] border border-amber-100 shadow-sm flex-1 flex flex-col justify-center text-left hover:border-amber-300 transition-colors group">
+                            <p className="text-[10px] font-black text-amber-600 uppercase mb-2 flex items-center gap-1"><AlertCircle size={14}/> Evoluções Atrasadas</p>
+                            <h4 className="text-4xl font-black text-amber-900">
+                                {agendamentosGlobais.filter(ag => ag.profissionalId === user.uid && ag.status === 'agendado' && new Date(ag.data).getTime() < new Date().getTime()).length}
+                            </h4>
+                            <p className="text-xs font-bold text-amber-700 mt-2 flex items-center gap-1 group-hover:translate-x-1 transition-transform">Resolver pendências &rarr;</p>
+                        </button>
                     </div>
                 </div>
             </div>
+        )}
 
-            {hasAccess(['gestor_clinico']) && (
-                <div className="pt-8 border-t space-y-6">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><LayoutDashboard className="text-blue-600"/> Visão de Gestão Global (Mês Atual)</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                        <div onClick={() => navegarPara('financeiro')} className="cursor-pointer bg-green-50 text-green-700 rounded-[24px] p-6 border border-green-200"><p className="text-[10px] font-black uppercase">Faturamento Bruto Mês</p><h3 className="text-3xl font-black">R$ {faturamentoTotalMes.toFixed(2)}</h3></div>
-                        <div className="bg-slate-900 text-white rounded-[24px] p-6"><p className="text-[10px] font-black uppercase text-slate-400">Total Sessões Úteis</p><h3 className="text-3xl font-black">{agendaMesGlobal.filter(a => a.status !== 'cancelado').length}</h3></div>
-                        <div onClick={() => setShowFaltasModal(true)} className="cursor-pointer bg-red-50 text-red-600 rounded-[24px] p-6 border border-red-200"><p className="text-[10px] font-black uppercase">Taxa de Faltas Críticas</p><h3 className="text-3xl font-black">{taxaCritica}%</h3></div>
+        {user.role === 'gestor_clinico' && (
+            <div className="space-y-8 mt-12 pt-8 border-t border-slate-200">
+               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-4"><TrendingUp className="text-blue-600"/> Visão Geral (Gestão)</h3>
+               
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col justify-center relative overflow-hidden">
+                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Sessões Realizadas Hoje</p>
+                    <h4 className="text-4xl font-black text-slate-800">{agendamentosHoje.filter(a => a.status === 'realizado').length}</h4>
+                    <Activity className="absolute -right-4 -bottom-4 w-24 h-24 text-slate-50 opacity-50" />
+                  </div>
+                  
+                  <div className="bg-slate-900 text-white p-8 rounded-[32px] shadow-xl relative overflow-hidden">
+                    <p className="text-[10px] font-black text-blue-300 uppercase mb-2">Faturamento Hoje</p>
+                    <h4 className="text-4xl font-black">R$ ****</h4>
+                    <p className="text-xs font-bold text-slate-400 mt-2">Visite o painel financeiro para revelar</p>
+                  </div>
+
+                  <div className="bg-red-50 border border-red-100 p-8 rounded-[32px] shadow-sm flex flex-col justify-center">
+                      <p className="text-[10px] font-black text-red-500 uppercase mb-2 flex items-center gap-1"><AlertCircle size={14}/> Faltas Críticas (Mês)</p>
+                      <h4 className="text-4xl font-black text-red-900">
+                         {agendamentosGlobais.filter(ag => ag.status === 'cancelado' && ['Falta sem justificativa', 'Cancelamento <24 Horas'].includes(ag.motivoCancelamento)).length}
+                      </h4>
+                      <p className="text-xs font-bold text-red-600 mt-2 cursor-pointer hover:underline">Ver Relatório Detalhado</p>
+                  </div>
+               </div>
+            </div>
+        )}
+
+        {isSuperGestor && (
+            <div className="space-y-8 mt-12 pt-8 border-t border-slate-200">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-4"><KeyRound className="text-blue-600"/> Painel Super Gestor (Master)</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-slate-900 rounded-[32px] p-8 shadow-xl text-white">
+                        <h4 className="font-black flex items-center gap-2 mb-6"><ShieldAlert className="text-amber-400"/> Logs de Auditoria</h4>
+                        <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                            {logsAuditoria.length === 0 ? (
+                                <p className="text-slate-400 text-sm">Nenhum log registrado ainda.</p>
+                            ) : (
+                                logsAuditoria.map(log => (
+                                    <div key={log.id} className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-xs font-black text-blue-300">{log.acao}</span>
+                                            <span className="text-[10px] font-bold text-slate-400">{new Date(log.data).toLocaleString('pt-BR')}</span>
+                                        </div>
+                                        <p className="text-sm font-medium text-slate-300">{log.detalhes}</p>
+                                        <p className="text-[10px] font-bold text-slate-500 mt-2 block">Por: {log.usuarioNome} (CREFITO: {log.usuarioRegistro})</p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <DatabaseZap size={48} className="text-slate-300 mb-4"/>
+                        <h4 className="font-black text-slate-800 text-xl mb-2">Controle de Privilégios</h4>
+                        <p className="text-sm font-medium text-slate-500 mb-6">A gestão de cargos e reset de senhas da equipe está 100% liberada na aba Equipe para o seu usuário (Master).</p>
+                        <button onClick={() => setActiveTab('equipe')} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-6 py-3 rounded-xl font-black transition-colors">Gerenciar Equipe</button>
                     </div>
                 </div>
-            )}
-
-            {isSuperGestor && (
-                <div className="pt-8 border-t grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-bottom-10">
-                    <div className="bg-white border-2 border-blue-100 rounded-[32px] p-8 shadow-sm">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="font-black text-slate-800 flex items-center gap-2"><ShieldAlert className="text-[#00A1FF]"/> Controle de Privilégios</h3>
-                            <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded">MASTER</span>
-                        </div>
-                        <div className="space-y-3 overflow-y-auto max-h-60 custom-scrollbar pr-2">
-                            {equipeCompleta.filter(p => p.registro !== SUPER_GESTOR_REGISTRO).map(prof => (
-                                <div key={prof.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                    <div><p className="text-xs font-black text-slate-800">{prof.nome}</p><p className="text-[9px] font-bold text-slate-400 uppercase">{prof.role}</p></div>
-                                    <select className="text-[10px] font-black bg-white border border-slate-200 p-1.5 rounded-lg outline-none" value={prof.role} onChange={(e) => alterarStatusGestor(prof.id, e.target.value)}>
-                                        <option value="fisio">Fisioterapeuta</option><option value="to">Ter. Ocupacional</option><option value="recepcao">Recepção</option><option value="gestor_clinico">Gestor Clínico</option>
-                                    </select>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bg-[#0F214A] text-white rounded-[32px] p-8 shadow-2xl">
-                        <div className="flex items-center justify-between mb-6"><h3 className="font-black flex items-center gap-2"><History className="text-[#00A1FF]"/> Logs de Auditoria</h3></div>
-                        <div className="space-y-4 overflow-y-auto max-h-60 custom-scrollbar pr-2">
-                            {logsSistema.map(log => (
-                                <div key={log.id} className="text-[10px] border-b border-white/5 pb-2">
-                                    <div className="flex justify-between font-black text-[#00A1FF] mb-1"><span>{log.usuarioNome?.toUpperCase()}</span><span className="text-white/30">{new Date(log.timestamp).toLocaleString('pt-BR')}</span></div>
-                                    <p className="font-bold text-slate-300">{log.acao}: <span className="text-slate-400 font-medium">{log.detalhes}</span></p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+            </div>
+        )}
+      </div>
     );
   };
 
-  if (!user) return (
-    <div className="min-h-screen flex bg-white font-sans animate-in fade-in duration-500">
-      <div className="hidden lg:flex flex-col justify-center w-1/2 bg-[#0F214A] p-16 text-white relative overflow-hidden">
-         <div className="relative z-10 max-w-lg animate-in slide-in-from-left duration-700">
-            <div className="flex items-center gap-3 mb-8">
-               <HeartPulse size={48} className="text-[#00A1FF] animate-pulse" />
-               <span className="text-3xl font-black tracking-tight">EVOLUTI</span>
-            </div>
-            <h1 className="text-5xl font-black leading-tight mb-6">Gestão Clínica Inteligente.</h1>
-            <p className="text-lg text-blue-200 font-medium leading-relaxed">
-               Acesse o sistema para coordenar seus atendimentos e gerenciar o fluxo da clínica com precisão e segurança de dados.
-            </p>
-         </div>
-         <div className="absolute top-1/4 right-10 w-48 h-48 opacity-90 hover:scale-105 transition-all duration-700 z-20 flex items-center justify-center bg-[#00A1FF] rounded-full shadow-[0_0_40px_rgba(0,161,255,0.4)] border-4 border-white animate-bounce"><Bot size={80} className="text-white"/></div>
-         <div className="absolute bottom-0 left-10 w-[300px] h-[300px] bg-[#00A1FF] rounded-full blur-[150px] opacity-20"></div>
-      </div>
-      
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-20 relative bg-white">
-         <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2 text-[#0F214A]">
-            <HeartPulse size={28} className="text-[#00A1FF]" />
-            <span className="text-xl font-black tracking-tight">EVOLUTI</span>
-         </div>
-         
-         <div className="w-full max-w-md animate-in slide-in-from-bottom-8 duration-700 fade-in delay-150">
-           <div className="mb-10 text-center lg:text-left">
-              <h2 className="text-3xl font-black text-slate-900">Bem-vindo de volta!</h2>
-              <p className="text-slate-500 font-medium mt-2">Insira suas credenciais para acessar o ambiente restrito.</p>
-           </div>
-           
-           <form onSubmit={realizarLogin} className="space-y-5">
-             <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">E-mail Profissional</label>
-                <input name="email" required type="email" placeholder="nome@clinica.com" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-700 transition-all shadow-sm" />
-             </div>
-             <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block ml-2">Senha</label>
-                <input name="senha" required type="password" placeholder="••••••••" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-[#00A1FF] focus:bg-white font-bold text-slate-700 transition-all shadow-sm" />
-             </div>
-             <button disabled={loading} className="w-full bg-[#0F214A] text-white py-4 rounded-2xl font-black text-lg hover:bg-[#00A1FF] transition-all shadow-lg hover:shadow-blue-200 mt-4 flex items-center justify-center gap-2 group">
-                {loading ? <Loader2 className="animate-spin" /> : <>Acessar Plataforma <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform"/></>}
-             </button>
-           </form>
-
-           <div className="mt-8 text-center lg:text-left text-[10px] font-black text-slate-300 uppercase tracking-widest">
-               Evoluti Fisio {APP_VERSION}
-           </div>
-         </div>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#fdfbff]">
-      <aside className={`hidden md:flex bg-[#f3eff4] transition-all duration-500 flex-col z-50 border-r border-slate-200 ${isSidebarOpen ? 'w-48' : 'w-24'}`} onMouseEnter={() => setIsSidebarOpen(true)} onMouseLeave={() => setIsSidebarOpen(false)}>
-        <div className="p-6 flex justify-center text-[#00A1FF]"><HeartPulse size={32} /></div>
-        <nav className="flex-1 px-2 space-y-4 mt-4">
-          {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button key={item.id} onClick={() => navegarPara(item.id)} className={`w-full flex flex-col items-center p-3 rounded-2xl transition-all gap-1 ${currentView === item.id ? 'bg-[#e5f5ff] text-[#00A1FF]' : 'text-slate-500 hover:bg-[#ece7ed]'}`}>
-              <item.icon size={24} /><span className={`text-[10px] font-black uppercase transition-opacity ${!isSidebarOpen ? 'opacity-0 h-0' : 'opacity-100'}`}>{item.label}</span>
+    <div className="flex h-[100dvh] bg-slate-50 overflow-hidden text-slate-900 font-sans selection:bg-blue-200">
+      
+      {/* Menu Lateral (Desktop) */}
+      <aside className="hidden md:flex flex-col w-72 bg-slate-900 text-slate-300 p-6 shadow-2xl relative z-20">
+        <div className="flex items-center gap-3 text-white mb-12 px-2">
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <Activity size={24} className="text-white" />
+          </div>
+          <span className="text-2xl font-black tracking-tight">Evoluti</span>
+        </div>
+        
+        <nav className="flex-1 space-y-2">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl font-bold transition-all duration-300 ${
+                activeTab === item.id 
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/50' 
+                  : 'hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <item.icon size={20} className={activeTab === item.id ? 'text-blue-200' : 'text-slate-500'} />
+              {item.label}
             </button>
           ))}
         </nav>
         
-        <button onClick={() => { setPerfilEdit({ nome: user.nome || '', email: user.email || '', registro: user.registro || '', whatsapp: user.whatsapp || '' }); setShowPerfilModal(true); }} className="p-4 flex flex-col items-center gap-1 text-slate-500 hover:text-[#00A1FF] transition-colors mt-auto">
-            <UserCog size={22}/>
-            <span className={`text-[8px] font-black uppercase ${!isSidebarOpen ? 'hidden' : 'block'}`}>Meu Perfil</span>
-        </button>
-
-        <div className="pb-4 pt-2 text-center text-[9px] font-black text-slate-300 tracking-widest whitespace-nowrap overflow-hidden">
-            <span className={!isSidebarOpen ? 'hidden' : 'inline'}>EVOLUTI </span>{APP_VERSION}
+        <div className="mt-auto border-t border-white/10 pt-6 flex flex-col gap-2">
+           <div className="flex items-center justify-between mb-4">
+               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{APP_VERSION}</span>
+               <button onClick={() => setShowPerfilModal(true)} className="p-2 hover:bg-white/10 rounded-xl transition-colors"><UserCog size={18}/></button>
+           </div>
         </div>
       </aside>
-      
-      <main className="flex-1 h-full overflow-y-auto relative">
-        <header className="h-16 bg-[#fdfbff]/80 backdrop-blur-md flex items-center justify-between px-6 border-b border-slate-100 sticky top-0 z-40">
-           <span className="font-black text-[#00A1FF] md:hidden tracking-tighter">EVOLUTI</span>
-           <div className="flex items-center gap-3 ml-auto">
+
+      {/* Menu Inferior (Mobile) - Oculta automaticamente se um Modal estiver ativo */}
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-3 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-[100] transition-transform duration-300 h-16 ${isModalActive ? 'translate-y-full' : 'translate-y-0'}`}>
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`flex flex-col items-center justify-center w-full rounded-xl transition-colors ${
+              activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:bg-slate-50'
+            }`}
+          >
+            <item.icon size={20} className="mb-0.5" />
+            <span className="text-[9px] font-black uppercase tracking-wider">{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* Área Principal */}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 relative">
+        <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+             <div className="md:hidden w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg">
+                <Activity size={18} className="text-white" />
+             </div>
+             <span className="font-black text-slate-800 hidden md:block uppercase tracking-widest text-xs bg-slate-100 px-3 py-1 rounded-lg">Unidade: {user.clinicasAcesso?.join(' & ').toUpperCase()}</span>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <div 
+                onClick={() => setShowPerfilModal(true)}
+                className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded-xl transition-colors"
+            >
               <div className="text-right hidden sm:block">
-                  <p className="text-xs font-black text-[#0F214A] leading-none">{user.nome}</p>
-                  <p className="text-[9px] text-[#00A1FF] font-bold uppercase mt-1">{isSuperGestor ? 'Super Gestor' : user.role.replace('_', ' ')}</p>
+                <p className="text-sm font-black text-slate-900">{user.nome}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{user.role.replace('_', ' ')}</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-[#0F214A] text-white flex items-center justify-center font-black text-xs uppercase cursor-pointer hover:scale-105 transition-transform" onClick={() => { setPerfilEdit({ nome: user.nome || '', email: user.email || '', registro: user.registro || '', whatsapp: user.whatsapp || '' }); setShowPerfilModal(true); }} title="Editar Meu Perfil">
-                  {user.nome.charAt(0)}
+              <div className="w-10 h-10 bg-slate-900 text-white rounded-full flex items-center justify-center font-black shadow-md border-2 border-white">
+                {user.nome.charAt(0)}
               </div>
-
-              {isSuperGestor && (
-                  <button disabled={loading} onClick={realizarBackupDB} className="w-8 h-8 flex items-center justify-center text-[#00A1FF] hover:text-white hover:bg-[#00A1FF] rounded-full transition-colors ml-1" title="Realizar Backup do Banco de Dados">
-                      {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16}/>}
-                  </button>
-              )}
-
-              <button onClick={fazerLogout} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 rounded-full transition-colors ml-1" title="Sair do Sistema">
-                  <LogOut size={16}/>
-              </button>
-           </div>
+            </div>
+            
+            <button 
+                onClick={handleLogout} 
+                className="p-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold transition-all ml-2 border border-red-100"
+                title="Sair do Sistema"
+            >
+                <LogOut size={18} />
+            </button>
+          </div>
         </header>
 
-        <div className="p-4 md:p-8 flex flex-col max-w-[1600px] mx-auto w-full">
-           {currentView === 'dashboard' ? renderDashboard() : null}
-           {currentView === 'agenda' && <Agenda user={user} hasAccess={hasAccess} navegarPara={navegarPara} setModalActive={setIsModalActive} />}
-           {currentView === 'pacientes' && <Pacientes pacientes={pacientes} hasAccess={hasAccess} user={user} navParams={navParams} setModalActive={setIsModalActive} />}
-           {currentView === 'avaliacoes' && <Avaliacoes hasAccess={hasAccess} />}
-           {currentView === 'financeiro' && <Financeiro user={user} hasAccess={hasAccess} />}
-           {currentView === 'equipe' && <Equipe user={user} />}
-        </div>
-      </main>
+        {/* Modal de Self-Service Profile */}
+        {showPerfilModal && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+                <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-black text-2xl flex items-center gap-2"><UserCircle className="text-blue-600"/> Meu Perfil</h3>
+                        <button onClick={() => setShowPerfilModal(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Nome Completo</label>
+                            <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800" value={perfilForm.nome} onChange={e => setPerfilForm({...perfilForm, nome: e.target.value})}/>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">E-mail (Acesso)</label>
+                            <input type="text" disabled className="w-full p-4 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-slate-400 cursor-not-allowed" value={perfilForm.email}/>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Registro / CREFITO</label>
+                            <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800" value={perfilForm.registro} onChange={e => setPerfilForm({...perfilForm, registro: e.target.value})}/>
+                        </div>
 
-      {showPerfilModal && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-              <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95">
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="font-black text-xl text-[#0F214A] flex items-center gap-2"><UserCog className="text-[#00A1FF]"/> Meus Dados</h3>
-                      <button onClick={() => setShowPerfilModal(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X/></button>
-                  </div>
-                  <form onSubmit={salvarPerfilProprio} className="space-y-4">
-                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Nome de Exibição</label><input required className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.nome} onChange={e => setPerfilEdit({...perfilEdit, nome: e.target.value})} /></div>
-                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">E-mail Profissional</label><input required type="email" className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.email} onChange={e => setPerfilEdit({...perfilEdit, email: e.target.value})} /></div>
-                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Registro Profissional (CREFITO)</label><input required className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.registro} onChange={e => setPerfilEdit({...perfilEdit, registro: e.target.value})} /></div>
-                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">WhatsApp (Celular)</label><input required placeholder="(11) 99999-9999" className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={perfilEdit.whatsapp} onChange={e => setPerfilEdit({...perfilEdit, whatsapp: e.target.value})} /></div>
-                      
-                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4"><p className="text-[10px] font-bold text-blue-600 flex items-center gap-1"><ShieldCheck size={12}/> Suas permissões são geridas pelo Sistema Evoluti.</p></div>
-                      
-                      <button type="submit" disabled={loading} className="w-full bg-[#0F214A] text-white py-4 rounded-2xl font-black hover:bg-[#00A1FF] transition-all flex justify-center shadow-lg">
-                          {loading ? <Loader2 className="animate-spin"/> : 'Salvar Alterações'}
-                      </button>
-                  </form>
-              </div>
-          </div>
-      )}
-
-      {/* PATCH v1.10.0: Modal Obrigatório para WhatsApp */}
-      {showWhatsappAlert && !showPerfilModal && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-            <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95 text-center relative overflow-hidden">
-                <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                    <PhoneForwarded size={40} />
+                        <button onClick={salvarPerfil} disabled={salvandoPerfil} className="w-full bg-[#0F214A] text-white font-black py-4 rounded-2xl mt-4 hover:bg-blue-700 transition-colors">
+                            {salvandoPerfil ? 'Salvando...' : 'Atualizar Meus Dados'}
+                        </button>
+                    </div>
                 </div>
-                <h3 className="font-black text-2xl text-[#0F214A] mb-3">Ação Obrigatória</h3>
-                <p className="text-slate-500 font-medium mb-8 text-sm leading-relaxed px-4">
-                    Para que a recepção possa avisar sobre a chegada dos seus pacientes instantaneamente, você precisa cadastrar o seu número de WhatsApp.
-                </p>
-                <button onClick={() => { 
-                    setShowWhatsappAlert(false); 
-                    setPerfilEdit({ nome: user.nome || '', email: user.email || '', registro: user.registro || '', whatsapp: user.whatsapp || '' }); 
-                    setShowPerfilModal(true); 
-                }} className="w-full bg-[#00A1FF] text-white py-4 rounded-2xl font-black hover:bg-[#0F214A] transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-blue-200">
-                    <UserCog size={18} /> Cadastrar Meu Celular
-                </button>
             </div>
-          </div>
-      )}
+        )}
 
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around items-center h-16 z-[50] ${isModalActive ? 'translate-y-full' : ''}`}>
-         {menuItems.filter(item => hasAccess(item.roles)).map((item) => (
-            <button key={item.id} onClick={() => navegarPara(item.id)} className={`flex flex-col items-center gap-1 flex-1 ${currentView === item.id ? 'text-[#00A1FF]' : 'text-slate-400'}`}><item.icon size={20} /><span className="text-[9px] font-bold">{item.label}</span></button>
-         ))}
-      </nav>
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar relative">
+          <div className="max-w-7xl mx-auto h-full pb-48"> 
+            {activeTab === 'inicio' && renderDashboard()}
+            {activeTab === 'agenda' && <Agenda user={user} setIsModalActive={setIsModalActive} registrarLog={registrarLog} temAcessoClinica={temAcessoClinica} />}
+            {activeTab === 'pacientes' && <Pacientes user={user} setIsModalActive={setIsModalActive} registrarLog={registrarLog} temAcessoClinica={temAcessoClinica} />}
+            {activeTab === 'financeiro' && <Financeiro user={user} registrarLog={registrarLog} temAcessoClinica={temAcessoClinica} />}
+            {activeTab === 'equipe' && user.role === 'gestor_clinico' && <Equipe user={user} registrarLog={registrarLog} />}
+            {activeTab === 'avaliacoes' && <Avaliacoes user={user} />}
+          </div>
+        </div>
+
+        {showEvo && (
+            <div className="fixed bottom-24 md:bottom-10 right-4 md:right-10 z-[150] flex flex-col items-end animate-in slide-in-from-bottom-10 fade-in duration-500">
+                <div className="bg-white border-2 border-blue-100 p-6 rounded-[32px] rounded-br-none shadow-2xl max-w-[300px] mb-4 relative">
+                   <button onClick={() => setShowEvo(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                   <p className="text-sm font-bold text-slate-700 leading-relaxed mb-4 pr-4">{myTutorial[evoStep].msg}</p>
+                   <div className="flex justify-between items-center">
+                       <div className="flex gap-1">
+                          {myTutorial.map((_, i) => (
+                             <div key={i} className={`w-2 h-2 rounded-full ${i === evoStep ? 'bg-blue-600' : 'bg-slate-200'}`}></div>
+                          ))}
+                       </div>
+                       {evoStep < myTutorial.length - 1 ? (
+                           <button onClick={() => setEvoStep(prev => prev + 1)} className="text-xs font-black bg-blue-50 text-blue-600 px-4 py-2 rounded-xl hover:bg-blue-100">Próximo</button>
+                       ) : (
+                           <button onClick={() => setShowEvo(false)} className="text-xs font-black bg-[#0F214A] text-white px-4 py-2 rounded-xl">Entendi!</button>
+                       )}
+                   </div>
+                </div>
+                <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/50 border-4 border-white cursor-pointer hover:scale-110 transition-transform" onClick={() => setShowEvo(!showEvo)}>
+                    <BrainCircuit size={32} className="text-white"/>
+                </div>
+            </div>
+        )}
+      </main>
     </div>
   );
-}
-
-export default function App() { 
-  return (
-    <ErrorBoundary>
-      <MainApp />
-      <SpeedInsights />
-      <Analytics />
-    </ErrorBoundary>
-  ); 
 }
