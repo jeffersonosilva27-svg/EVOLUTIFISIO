@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Search, Activity, BookOpen, X
+  Search, Activity, BookOpen, X, Save, UserCircle, Loader2
 } from 'lucide-react';
+import { db } from '../services/firebaseConfig';
+import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 
 // ==========================================
 // 📚 BIBLIOTECA LOCAL DE ESCALAS (INQUEBRÁVEL)
 // ==========================================
-// Sempre que eu (Gemini) gerar uma nova escala para você, 
-// basta colar o bloco { ... } aqui dentro desta lista, separando por vírgula!
 const BIBLIOTECA_ESCALAS = [
   {
     id: "escala-berg-001",
@@ -55,12 +55,25 @@ const BIBLIOTECA_ESCALAS = [
   }
 ];
 
-export default function Avaliacoes({ hasAccess }) {
+export default function Avaliacoes({ hasAccess, user }) {
   const [termoBusca, setTermoBusca] = useState('');
   const [escalaAberta, setEscalaAberta] = useState(null);
   const [respostasAplicacao, setRespostasAplicacao] = useState({});
+  
+  // Novos Estados para Vinculação de Paciente
+  const [pacientesAtivos, setPacientesAtivos] = useState([]);
+  const [pacienteSelecionado, setPacienteSelecionado] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  // Filtra as escalas instantaneamente conforme você digita
+  // Busca a lista de pacientes do Firebase em tempo real
+  useEffect(() => {
+    const q = query(collection(db, "pacientes"), orderBy("nome", "asc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setPacientesAtivos(snap.docs.map(d => ({ id: d.id, nome: d.data().nome })));
+    });
+    return () => unsub();
+  }, []);
+
   const escalasFiltradas = BIBLIOTECA_ESCALAS.filter(escala => 
     escala.nome.toLowerCase().includes(termoBusca.toLowerCase()) ||
     escala.sigla.toLowerCase().includes(termoBusca.toLowerCase())
@@ -69,17 +82,48 @@ export default function Avaliacoes({ hasAccess }) {
   const abrirEscala = (escala) => {
     setEscalaAberta(escala);
     setRespostasAplicacao({});
+    setPacienteSelecionado(""); // Reseta a seleção
   };
 
   const selecionarOpcao = (perguntaIndex, valor) => {
-    setRespostasAplicacao(prev => ({
-      ...prev,
-      [perguntaIndex]: valor
-    }));
+    setRespostasAplicacao(prev => ({ ...prev, [perguntaIndex]: valor }));
   };
 
   const calcularPontuacaoFinal = () => {
     return Object.values(respostasAplicacao).reduce((acc, curr) => acc + curr, 0);
+  };
+
+  // Função para injetar o resultado no Prontuário do Firebase
+  const salvarNoProntuario = async () => {
+    if (!pacienteSelecionado) {
+        return alert("Erro: Você precisa selecionar um paciente para vincular o resultado!");
+    }
+    
+    // Verifica se respondeu a todas as perguntas
+    if (Object.keys(respostasAplicacao).length < escalaAberta.itens.length) {
+        if(!window.confirm("Atenção: Você não respondeu a todos os itens. Deseja salvar mesmo assim?")) return;
+    }
+
+    setSalvando(true);
+    try {
+        const prontuarioRef = collection(db, "pacientes", pacienteSelecionado, "historico_escalas");
+        await addDoc(prontuarioRef, {
+            escalaId: escalaAberta.id,
+            escalaNome: escalaAberta.nome,
+            sigla: escalaAberta.sigla,
+            scoreFinal: calcularPontuacaoFinal(),
+            respostasBrutas: respostasAplicacao,
+            dataAplicacao: new Date().toISOString(),
+            profissionalAvaliador: user?.nome || "Equipe"
+        });
+        
+        alert("Avaliação salva e arquivada no prontuário do paciente com sucesso!");
+        setEscalaAberta(null);
+    } catch (error) {
+        alert("Erro ao tentar salvar no banco de dados.");
+        console.error(error);
+    }
+    setSalvando(false);
   };
 
   return (
@@ -150,6 +194,25 @@ export default function Avaliacoes({ hasAccess }) {
             </div>
 
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
+              
+              {/* SESSÃO DE VINCULAÇÃO AO PACIENTE (OBRIGATÓRIO) */}
+              <div className="mb-8 p-5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-4">
+                  <div className="p-3 bg-amber-100 text-amber-600 rounded-xl"><UserCircle size={28}/></div>
+                  <div className="flex-1 w-full">
+                      <label className="text-[10px] font-black uppercase text-amber-800 tracking-widest mb-1 block">Vincular Avaliação Ao Paciente:</label>
+                      <select 
+                          value={pacienteSelecionado} 
+                          onChange={(e) => setPacienteSelecionado(e.target.value)}
+                          className="w-full p-3 bg-white border border-amber-200 rounded-xl outline-none font-bold text-slate-700"
+                      >
+                          <option value="">-- Selecione o Paciente --</option>
+                          {pacientesAtivos.map(p => (
+                              <option key={p.id} value={p.id}>{p.nome}</option>
+                          ))}
+                      </select>
+                  </div>
+              </div>
+
               <div className="mb-8 p-5 bg-blue-50/50 border border-blue-100 rounded-2xl">
                 <h4 className="text-xs font-black text-blue-800 uppercase mb-1">Instruções de Aplicação</h4>
                 <p className="text-sm font-medium text-slate-600">{escalaAberta.instrucoes}</p>
@@ -183,7 +246,7 @@ export default function Avaliacoes({ hasAccess }) {
               </div>
             </div>
 
-            {/* BARRA INFERIOR - RESULTADO DA ESCALA */}
+            {/* BARRA INFERIOR - RESULTADO E BOTÃO SALVAR */}
             <div className="p-8 border-t border-slate-100 bg-white rounded-b-[40px] shrink-0">
               <div className="flex flex-col md:flex-row items-center gap-6">
                 <div className="flex items-center justify-center w-24 h-24 bg-blue-600 rounded-3xl text-white shadow-xl shadow-blue-200 shrink-0">
@@ -192,9 +255,17 @@ export default function Avaliacoes({ hasAccess }) {
                     <div className="text-4xl font-black leading-none">{calcularPontuacaoFinal()}</div>
                   </div>
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 w-full">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Interpretação e Laudo</h4>
-                  <p className="text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200">{escalaAberta.interpretacao}</p>
+                  <p className="text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4">{escalaAberta.interpretacao}</p>
+                  
+                  <button 
+                    onClick={salvarNoProntuario} 
+                    disabled={salvando}
+                    className="w-full bg-[#0F214A] text-white py-4 rounded-2xl font-black hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 shadow-lg"
+                  >
+                    {salvando ? <Loader2 className="animate-spin" size={20}/> : <><Save size={20}/> Salvar no Prontuário do Paciente</>}
+                  </button>
                 </div>
               </div>
             </div>
