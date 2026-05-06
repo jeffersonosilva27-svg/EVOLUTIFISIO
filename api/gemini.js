@@ -32,7 +32,9 @@ export default async function handler(req, res) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    // PATCH V1.10.1: Usar 'gemini-pro' que é 100% suportado por todas as versões do SDK antigo
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
     // Chamada limpa e nativa, compatível com todas as versões do SDK do Google
     const result = await model.generateContent({
