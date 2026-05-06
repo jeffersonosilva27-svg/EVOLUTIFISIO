@@ -1,76 +1,76 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Search, Sparkles, Plus, Activity, BookOpen, 
-  CheckCircle2, ChevronLeft, Loader2, Save, X, BrainCircuit, Trash2 
+  Search, Activity, BookOpen, X
 } from 'lucide-react';
-import { db } from '../services/firebaseConfig';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { buscarEscalaIA } from '../services/geminiService';
+
+// ==========================================
+// 📚 BIBLIOTECA LOCAL DE ESCALAS (INQUEBRÁVEL)
+// ==========================================
+// Sempre que eu (Gemini) gerar uma nova escala para você, 
+// basta colar o bloco { ... } aqui dentro desta lista, separando por vírgula!
+const BIBLIOTECA_ESCALAS = [
+  {
+    id: "escala-berg-001",
+    nome: "Escala de Equilíbrio de Berg",
+    sigla: "BBS",
+    objetivo: "Avaliar o equilíbrio estático e dinâmico.",
+    instrucoes: "Peça ao paciente para realizar cada tarefa. Pontue de 0 (incapaz) a 4 (independente).",
+    interpretacao: "0-20: Alto risco de queda | 21-40: Médio risco | 41-56: Baixo risco",
+    itens: [
+      {
+        pergunta: "1. Sentado para de pé",
+        opcoes: [
+          { texto: "Incapaz de levantar sem ajuda", valor: 0 },
+          { texto: "Precisa de mínima ajuda", valor: 2 },
+          { texto: "Levanta-se independentemente", valor: 4 }
+        ]
+      },
+      {
+        pergunta: "2. De pé sem apoio",
+        opcoes: [
+          { texto: "Incapaz de ficar em pé 30s sem ajuda", valor: 0 },
+          { texto: "Fica em pé 30s com supervisão", valor: 2 },
+          { texto: "Fica em pé 2 minutos com segurança", valor: 4 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "escala-tug-002",
+    nome: "Timed Up and Go",
+    sigla: "TUG",
+    objetivo: "Avaliar a mobilidade funcional e risco de quedas.",
+    instrucoes: "O paciente deve levantar de uma cadeira, andar 3 metros, virar, voltar e sentar. Avalie o tempo total.",
+    interpretacao: "< 10s: Risco Normal | 11-20s: Risco Moderado | > 20s: Risco Alto",
+    itens: [
+      {
+        pergunta: "Tempo de Execução (Categorizado)",
+        opcoes: [
+          { texto: "Mais de 20 segundos (Risco Alto)", valor: 0 },
+          { texto: "11 a 20 segundos (Risco Moderado)", valor: 2 },
+          { texto: "Menos de 10 segundos (Normal)", valor: 4 }
+        ]
+      }
+    ]
+  }
+];
 
 export default function Avaliacoes({ hasAccess }) {
-  const [termoBuscaIA, setTermoBuscaIA] = useState('');
-  const [carregandoIA, setCarregandoIA] = useState(false);
-  const [resultadoIA, setResultadoIA] = useState(null);
-  const [erroIA, setErroIA] = useState('');
-
-  const [escalasSalvas, setEscalasSalvas] = useState([]);
-  
-  // Controle de Aplicação da Escala
+  const [termoBusca, setTermoBusca] = useState('');
   const [escalaAberta, setEscalaAberta] = useState(null);
   const [respostasAplicacao, setRespostasAplicacao] = useState({});
 
-  // 1. CARREGAR ESCALAS SALVAS DO FIREBASE
-  useEffect(() => {
-    const q = query(collection(db, "escalas_clinicas"), orderBy("nome", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setEscalasSalvas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, []);
+  // Filtra as escalas instantaneamente conforme você digita
+  const escalasFiltradas = BIBLIOTECA_ESCALAS.filter(escala => 
+    escala.nome.toLowerCase().includes(termoBusca.toLowerCase()) ||
+    escala.sigla.toLowerCase().includes(termoBusca.toLowerCase())
+  );
 
-  // 2. BUSCAR NOVA ESCALA NA IA
-  const pesquisarIA = async (e) => {
-    e.preventDefault();
-    if (!termoBuscaIA) return;
-    setCarregandoIA(true);
-    setResultadoIA(null);
-    setErroIA('');
-    
-    const dados = await buscarEscalaIA(termoBuscaIA);
-    
-    if (dados?.erro) {
-      setErroIA(`Falha de Conexão: ${dados.erro}. O servidor da Vercel requer atualização para suportar buscas em JSON.`);
-    } else if (dados?.nome) {
-      setResultadoIA(dados);
-    } else {
-      setErroIA("Erro ao estruturar a escala. Tente novamente.");
-    }
-    setCarregandoIA(false);
+  const abrirEscala = (escala) => {
+    setEscalaAberta(escala);
+    setRespostasAplicacao({});
   };
 
-  // 3. SALVAR ESCALA NA CLÍNICA
-  const guardarEscalaNaBase = async () => {
-    if (!resultadoIA) return;
-    try {
-      await addDoc(collection(db, "escalas_clinicas"), {
-        ...resultadoIA,
-        dataCriacao: new Date().toISOString()
-      });
-      alert("Escala adicionada à base da clínica com sucesso!");
-      setResultadoIA(null);
-      setTermoBuscaIA('');
-    } catch (e) {
-      alert("Erro ao guardar na base.");
-    }
-  };
-
-  const apagarEscala = async (id) => {
-    if (window.confirm("Deseja remover esta escala da clínica?")) {
-      await deleteDoc(doc(db, "escalas_clinicas", id));
-    }
-  };
-
-  // 4. LÓGICA DE APLICAÇÃO (CÁLCULO DE PONTOS)
   const selecionarOpcao = (perguntaIndex, valor) => {
     setRespostasAplicacao(prev => ({
       ...prev,
@@ -82,11 +82,6 @@ export default function Avaliacoes({ hasAccess }) {
     return Object.values(respostasAplicacao).reduce((acc, curr) => acc + curr, 0);
   };
 
-  const abrirEscala = (escala) => {
-    setEscalaAberta(escala);
-    setRespostasAplicacao({});
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-20">
       
@@ -96,92 +91,39 @@ export default function Avaliacoes({ hasAccess }) {
           <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-3">
             <Activity className="text-blue-600" size={36}/> Avaliações Clínicas
           </h1>
-          <p className="text-slate-500 font-medium mt-1">Biblioteca científica de escalas e testes padronizados.</p>
+          <p className="text-slate-500 font-medium mt-1">Biblioteca estática de escalas e testes padronizados.</p>
         </div>
       </div>
 
-      {/* MOTOR DE BUSCA DA IA */}
-      <div className="bg-slate-900 rounded-[32px] p-8 shadow-xl relative overflow-hidden">
-        <Sparkles className="absolute -right-10 -top-10 text-blue-500 opacity-20 w-64 h-64" />
-        
-        <div className="relative z-10 max-w-3xl">
-          <h3 className="text-white font-black text-2xl mb-2 flex items-center gap-2"><BrainCircuit/> Procurar Nova Escala (Agente IA)</h3>
-          <p className="text-slate-400 text-sm font-medium mb-6">A Inteligência Artificial buscará testes validados e estruturará um formulário aplicável automaticamente.</p>
-          
-          <form onSubmit={pesquisarIA} className="flex gap-3">
-            <div className="flex-1 bg-white/10 border border-white/20 rounded-2xl flex items-center px-4 focus-within:bg-white/20 transition-all">
-              <Search className="text-slate-300 mr-2" size={20}/>
-              <input 
-                type="text" 
-                placeholder="Ex: TUG, Escala de Berg, Fugl-Meyer..." 
-                className="w-full bg-transparent border-none outline-none text-white py-4 font-bold placeholder-slate-400"
-                value={termoBuscaIA}
-                onChange={e => setTermoBuscaIA(e.target.value)}
-              />
-            </div>
-            <button disabled={carregandoIA} type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 transition-colors flex items-center">
-              {carregandoIA ? <Loader2 className="animate-spin" size={20}/> : 'Pesquisar'}
-            </button>
-          </form>
-
-          {erroIA && <div className="mt-4 p-4 bg-red-500/20 border border-red-500/50 text-red-200 rounded-xl font-bold text-sm">{erroIA}</div>}
+      {/* BUSCA INSTANTÂNEA LOCAL */}
+      <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200">
+        <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl flex items-center px-4 focus-within:border-blue-500 transition-all">
+          <Search className="text-slate-400 mr-2" size={20}/>
+          <input 
+            type="text" 
+            placeholder="Buscar escala por nome ou sigla (Ex: TUG, Berg)..." 
+            className="w-full bg-transparent border-none outline-none text-slate-700 py-4 font-bold placeholder-slate-400"
+            value={termoBusca}
+            onChange={e => setTermoBusca(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* PREVIEW DA ESCALA ENCONTRADA PELA IA */}
-      {resultadoIA && (
-        <div className="bg-blue-50 border-2 border-blue-600 rounded-[32px] p-8 animate-in slide-in-from-top-4 shadow-lg shadow-blue-100">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <span className="bg-blue-200 text-blue-800 text-[10px] font-black uppercase px-3 py-1 rounded-full tracking-widest">Descoberta Científica IA</span>
-              <h2 className="text-2xl font-black text-slate-900 mt-3">{resultadoIA.nome} ({resultadoIA.sigla})</h2>
-              <p className="text-slate-600 mt-2 font-medium">{resultadoIA.objetivo}</p>
-            </div>
-            <button onClick={() => setResultadoIA(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={24}/></button>
-          </div>
-          
-          <div className="bg-white p-6 rounded-2xl border border-blue-100 mb-6">
-            <h4 className="text-xs font-black uppercase text-slate-400 mb-2">Amostra do Formulário Gerado</h4>
-            <div className="space-y-3 opacity-60 pointer-events-none">
-              {resultadoIA.itens?.slice(0, 2).map((item, i) => (
-                <div key={i} className="p-4 border rounded-xl">
-                  <p className="font-bold text-slate-800 text-sm mb-2">{item.pergunta}</p>
-                  <div className="flex gap-2">
-                    {item.opcoes?.map((op, j) => (
-                      <span key={j} className="bg-slate-50 border px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500">{op.texto}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {resultadoIA.itens?.length > 2 && <p className="text-xs font-bold text-blue-600 mt-2">+ {resultadoIA.itens.length - 2} itens ocultos...</p>}
-            </div>
-          </div>
-
-          <button onClick={guardarEscalaNaBase} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-md flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors">
-            <Save size={20}/> Salvar {resultadoIA.sigla} na Base da Clínica
-          </button>
-        </div>
-      )}
-
-      {/* GRID DE ESCALAS SALVAS */}
-      <div className="mt-10">
-        <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center"><BookOpen className="mr-2 text-blue-600"/> Biblioteca da Clínica</h3>
+      {/* GRID DE ESCALAS */}
+      <div className="mt-8">
+        <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center"><BookOpen className="mr-2 text-blue-600"/> Biblioteca de Testes ({escalasFiltradas.length})</h3>
         
-        {escalasSalvas.length === 0 ? (
+        {escalasFiltradas.length === 0 ? (
           <div className="text-center p-16 border-2 border-dashed border-slate-200 rounded-[32px] text-slate-400">
             <BookOpen size={48} className="mx-auto mb-4 opacity-50"/>
-            <p className="font-bold">A sua biblioteca clínica está vazia.</p>
-            <p className="text-sm font-medium mt-1">Utilize o Agente IA acima para importar testes validados.</p>
+            <p className="font-bold">Nenhuma escala encontrada com esse nome.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {escalasSalvas.map(escala => (
+            {escalasFiltradas.map(escala => (
               <div key={escala.id} className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group flex flex-col">
                 <div className="flex justify-between items-start mb-4">
                   <div className="bg-blue-50 text-blue-700 font-black px-3 py-1 rounded-lg text-xs">{escala.sigla}</div>
-                  {hasAccess(['gestor_clinico']) && (
-                    <button onClick={() => apagarEscala(escala.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button>
-                  )}
                 </div>
                 <h4 className="font-black text-lg text-slate-900 mb-2 leading-tight">{escala.nome}</h4>
                 <p className="text-xs text-slate-500 font-medium line-clamp-3 flex-1 mb-6">{escala.objetivo}</p>
@@ -194,7 +136,7 @@ export default function Avaliacoes({ hasAccess }) {
         )}
       </div>
 
-      {/* MODAL DE APLICAÇÃO DA ESCALA (FORMULÁRIO INTERATIVO) */}
+      {/* MODAL DE APLICAÇÃO DA ESCALA */}
       {escalaAberta && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
           <div className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
