@@ -1,13 +1,13 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export default async function handler(req, res) {
-  // Configuração de CORS para permitir a comunicação com o Frontend
+  // Configuração de CORS para comunicação fluida com o Frontend
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Ignorar requisições de verificação prévia (Preflight) do navegador
+  // Libera a verificação de segurança inicial do navegador
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -23,22 +23,20 @@ export default async function handler(req, res) {
       return res.status(500).json({ erro: 'Chave de API não configurada na Vercel.' });
     }
 
-    // Recebe o prompt e o formato exigido pelo nosso Frontend
-    const { prompt, formato } = req.body;
+    // Blindagem de Parsing: Garante que a Vercel consegue ler o body
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const { prompt } = body;
 
     if (!prompt) {
-      return res.status(400).json({ erro: 'Prompt não recebido.' });
+      return res.status(400).json({ erro: 'Prompt não recebido do frontend.' });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    // Se a requisição vier da aba "Avaliações", forçamos a IA a devolver um JSON puro
-    const generationConfig = formato === 'json' ? { responseMimeType: "application/json" } : {};
-
+    // Chamada limpa e nativa, compatível com todas as versões do SDK do Google
     const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }]
     });
 
     const respostaTexto = result.response.text();
@@ -47,6 +45,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Erro na API Gemini:', error);
-    return res.status(500).json({ erro: 'Erro interno no servidor da Vercel.' });
+    // Expondo a MENSAGEM REAL DO ERRO para o frontend (facilita o nosso debug)
+    return res.status(500).json({ erro: `Erro no Servidor: ${error.message}` });
   }
 }

@@ -3,9 +3,9 @@ const API_URL = '/api/gemini';
 
 export const buscarEscalaIA = async (nomeEscala) => {
   try {
-    // Prompt altamente estruturado (Engenharia de Prompt)
+    // Prompt de Engenharia Reversa
     const prompt = `Atue como um fisioterapeuta pesquisador de nível sênior. Forneça a estrutura clínica completa da escala ou teste "${nomeEscala}".
-    Retorne EXATAMENTE no formato JSON abaixo, garantindo que as propriedades e chaves sejam mantidas. 
+    Retorne EXATAMENTE no formato JSON abaixo, sem nenhum texto de introdução ou conclusão.
     {
       "nome": "Nome Completo da Escala",
       "sigla": "SIGLA",
@@ -23,33 +23,39 @@ export const buscarEscalaIA = async (nomeEscala) => {
       ]
     }`;
 
-    // Enviando o pedido para o nosso servidor na Vercel
+    // Enviando o pedido para a Vercel
     const resposta = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, formato: 'json' }) // A flag 'json' ativa a nova lógica na Vercel
+      body: JSON.stringify({ prompt })
     });
 
     const dados = await resposta.json();
 
     if (dados.erro) {
-      return { erro: dados.erro };
+      return { erro: dados.erro }; // Se a Vercel falhar, mostrará o erro real agora!
     }
 
-    // Transformamos a resposta de texto da IA num Objeto Javascript perfeitamente interativo
-    let jsonEscala;
-    try {
-      jsonEscala = JSON.parse(dados.resultado);
-    } catch (parseError) {
-       // Tratamento de fallback caso a IA envie o texto com crases de markdown (```json ... ```)
-       const textoLimpo = dados.resultado.replace(/```json/g, '').replace(/```/g, '').trim();
-       jsonEscala = JSON.parse(textoLimpo);
+    // ESTRATÉGIA DE EXTRAÇÃO SEGURA (JSON RECORTADO)
+    let textoRaw = dados.resultado;
+    let jsonExtraido = "";
+
+    // Procura onde o JSON começa "{" e onde ele termina "}"
+    const start = textoRaw.indexOf('{');
+    const end = textoRaw.lastIndexOf('}');
+
+    if (start !== -1 && end !== -1) {
+        jsonExtraido = textoRaw.slice(start, end + 1);
+    } else {
+        return { erro: "A IA não conseguiu estruturar a escala em formulário." };
     }
 
+    // Converte o texto fatiado para um Objeto React
+    const jsonEscala = JSON.parse(jsonExtraido);
     return jsonEscala;
 
   } catch (error) {
     console.error("Erro de comunicação com o servidor:", error);
-    return { erro: "O servidor da Vercel falhou ao processar a escala." };
+    return { erro: "Falha de rede ao tentar contactar a Vercel." };
   }
 };
