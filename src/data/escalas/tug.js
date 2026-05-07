@@ -1,36 +1,92 @@
-export const tug = {
-    id: "escala-tug-002",
-    nome: "Timed Up and Go (TUG) - Teste Completo",
-    sigla: "TUG",
-    objetivo: "Avaliar a mobilidade funcional, equilíbrio dinâmico e risco de quedas em idosos e pacientes neurológicos/ortopédicos.",
-    instrucoes: "O paciente deve estar sentado em uma cadeira padrão com braços. Ao comando 'Vá', ele deve levantar-se, caminhar 3 metros em uma linha reta, virar 180 graus, retornar à cadeira e sentar-se. Avalie o tempo e a qualidade do movimento.",
-    interpretacao: "0-1 pts: Normal/Independente (Até 10s) | 2-3 pts: Risco Baixo (11-19s) | 4-5 pts: Risco Moderado (20-29s) | 6+ pts: Alto Risco de Queda/Dependência (30s+)",
-    itens: [
-      {
-        pergunta: "1. Tempo Total de Execução (Cronometrado)",
-        opcoes: [
-          { texto: "10 segundos ou menos (Independente)", valor: 0 },
-          { texto: "11 a 19 segundos (Independência Básica / Risco Baixo)", valor: 1 },
-          { texto: "20 a 29 segundos (Mobilidade Prejudicada / Risco Moderado)", valor: 3 },
-          { texto: "30 segundos ou mais (Dependência / Alto Risco)", valor: 5 }
-        ]
-      },
-      {
-        pergunta: "2. Necessidade de Dispositivo de Auxílio",
-        opcoes: [
-          { texto: "Nenhum dispositivo (Marcha livre)", valor: 0 },
-          { texto: "Usa bengala simples ou canadense", valor: 1 },
-          { texto: "Usa andador articulado ou fixo", valor: 2 },
-          { texto: "Necessita de assistência humana para realizar o teste", valor: 3 }
-        ]
-      },
-      {
-        pergunta: "3. Qualidade da Marcha e Equilíbrio (Observacional)",
-        opcoes: [
-          { texto: "Firme, passos simétricos, sem desequilíbrio aparente", valor: 0 },
-          { texto: "Leve hesitação ao levantar, virar ou sentar", valor: 1 },
-          { texto: "Desequilíbrio visível, passos curtos, usa os braços excessivamente", valor: 2 }
-        ]
-      }
-    ]
-  };
+// src/data/escalas/tug.js
+export const escalaTUG = {
+  id: 'tug',
+  nome: 'Teste Timed Up and Go (TUG)',
+  descricao: 'Avaliação cronometrada da mobilidade funcional, agilidade, equilíbrio dinâmico e risco de quedas.',
+  tipoCalculo: 'tempo', // Indica ao renderer que o score principal é o tempo
+  perguntas: [
+    {
+      id: 'tempo_segundos',
+      texto: 'Tempo total de execução',
+      descricao: 'Cronometre desde o "Já" até o paciente encostar totalmente as costas novamente na cadeira.',
+      tipo: 'numero',
+      placeholder: 'Ex: 12.5 (em segundos)'
+    },
+    {
+      id: 'q1',
+      texto: '1. Levantar da cadeira',
+      descricao: 'O paciente usou os braços para impulso? Houve hesitação ou múltiplas tentativas?',
+      tipo: 'radio',
+      opcoes: [
+        { valor: 'Normal', label: 'Normal (Levantou sem hesitação e sem uso excessivo dos braços)' },
+        { valor: 'Alterado', label: 'Alterado (Usou braços, hesitou ou precisou de tentativas)' }
+      ]
+    },
+    {
+      id: 'q2',
+      texto: '2. Marcha (Ida)',
+      descricao: 'O comprimento do passo é simétrico? A velocidade é constante? Há desvios?',
+      tipo: 'radio',
+      opcoes: [
+        { valor: 'Normal', label: 'Normal (Passos simétricos, velocidade constante, trajetória linear)' },
+        { valor: 'Alterado', label: 'Alterado (Desvios, passos assimétricos ou velocidade inconstante)' }
+      ]
+    },
+    {
+      id: 'q3',
+      texto: '3. Giro (180 graus)',
+      descricao: 'O giro foi feito em bloco? Houve desequilíbrio ou parada?',
+      tipo: 'radio',
+      opcoes: [
+        { valor: 'Normal', label: 'Normal (Giro seguro, estável e contínuo)' },
+        { valor: 'Alterado', label: 'Alterado (Giro em bloco, desequilíbrio transversal ou parada)' }
+      ]
+    },
+    {
+      id: 'q4',
+      texto: '4. Marcha (Volta)',
+      descricao: 'O padrão de caminhada se manteve ou houve fadiga?',
+      tipo: 'radio',
+      opcoes: [
+        { valor: 'Normal', label: 'Normal (Padrão mantido, sem fadiga compensatória)' },
+        { valor: 'Alterado', label: 'Alterado (Fadiga, lentidão ou alteração compensatória)' }
+      ]
+    },
+    {
+      id: 'q5',
+      texto: '5. Sentar na cadeira',
+      descricao: 'Controlou a descida ou "desabou"? Tateou os braços da cadeira?',
+      tipo: 'radio',
+      opcoes: [
+        { valor: 'Normal', label: 'Normal (Descida controlada, segura e sem tatear excessivamente)' },
+        { valor: 'Alterado', label: 'Alterado ("Desabou" no assento ou tateou muito os braços)' }
+      ]
+    }
+  ],
+  interpretarResultado: (respostas) => {
+    // O valor do tempo vem do input numérico
+    const tempo = parseFloat(respostas['tempo_segundos']) || 0;
+    let risco = '';
+    let detalhes = '';
+
+    if (tempo <= 10) {
+      risco = 'Normal (Baixo risco de quedas)';
+      detalhes = 'Paciente totalmente independente e com mobilidade preservada.';
+    } else if (tempo > 10 && tempo < 20) {
+      risco = 'Mobilidade com leve prejuízo (Risco moderado a baixo)';
+      detalhes = 'Independente para transferências básicas. Tempo esperado para idosos frágeis, mas independentes.';
+    } else if (tempo >= 20 && tempo < 30) {
+      risco = 'Mobilidade prejudicada (Alto risco de quedas)';
+      detalhes = 'Dependente para algumas AVDs. Necessidade imediata de intervenção ou dispositivo de marcha.';
+    } else {
+      risco = 'Mobilidade severamente prejudicada (Risco altíssimo de quedas)';
+      detalhes = 'Paciente dependente na maioria das atividades diárias.';
+    }
+
+    const notaClinica = tempo >= 12.4 
+      ? 'Atenção: Tempo superior ao ponto de corte brasileiro (12,4s). Alerta clínico sistêmico para risco iminente de quedas.' 
+      : '';
+
+    return { risco, detalhes, notaClinica, scoreDisplay: `${tempo} segundos` };
+  }
+};
