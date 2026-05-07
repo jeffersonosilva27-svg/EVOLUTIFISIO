@@ -1,61 +1,63 @@
-// A rota oculta que criamos na Vercel
-const API_URL = '/api/gemini';
+// src/services/geminiService.js
 
-export const buscarEscalaIA = async (nomeEscala) => {
+// 1. Função central que se comunica com o nosso próprio servidor Vercel
+const callGeminiAPI = async (action, payload) => {
   try {
-    // Prompt de Engenharia Reversa
-    const prompt = `Atue como um fisioterapeuta pesquisador de nível sênior. Forneça a estrutura clínica completa da escala ou teste "${nomeEscala}".
-    Retorne EXATAMENTE no formato JSON abaixo, sem nenhum texto de introdução ou conclusão.
-    {
-      "nome": "Nome Completo da Escala",
-      "sigla": "SIGLA",
-      "objetivo": "Para que serve de forma resumida",
-      "instrucoes": "Como o profissional deve aplicar",
-      "interpretacao": "Como interpretar o resultado final (pontuação de corte)",
-      "itens": [
-        {
-          "pergunta": "Texto da Pergunta/Ação avaliada",
-          "opcoes": [
-            { "texto": "Opção A", "valor": 0 },
-            { "texto": "Opção B", "valor": 1 }
-          ]
-        }
-      ]
-    }`;
-
-    // Enviando o pedido para a Vercel
-    const resposta = await fetch(API_URL, {
+    const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ action, payload })
     });
-
-    const dados = await resposta.json();
-
-    if (dados.erro) {
-      return { erro: dados.erro }; // Se a Vercel falhar, mostrará o erro real agora!
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+       throw new Error(data.error || 'Erro interno na API');
     }
-
-    // ESTRATÉGIA DE EXTRAÇÃO SEGURA (JSON RECORTADO)
-    let textoRaw = dados.resultado;
-    let jsonExtraido = "";
-
-    // Procura onde o JSON começa "{" e onde ele termina "}"
-    const start = textoRaw.indexOf('{');
-    const end = textoRaw.lastIndexOf('}');
-
-    if (start !== -1 && end !== -1) {
-        jsonExtraido = textoRaw.slice(start, end + 1);
-    } else {
-        return { erro: "A IA não conseguiu estruturar a escala em formulário." };
-    }
-
-    // Converte o texto fatiado para um Objeto React
-    const jsonEscala = JSON.parse(jsonExtraido);
-    return jsonEscala;
-
+    return data.result;
   } catch (error) {
-    console.error("Erro de comunicação com o servidor:", error);
-    return { erro: "Falha de rede ao tentar contactar a Vercel." };
+    console.error(`Erro ao comunicar com o servidor de IA (${action}):`, error);
+    return null;
   }
+};
+
+// =========================================================================
+// FUNÇÕES EXPORTADAS (Mantêm a mesma estrutura para o resto do sistema não quebrar)
+// =========================================================================
+
+export const analisarEvolucao = async (textoSubjetivo) => {
+  const res = await callGeminiAPI('analisarEvolucao', { textoSubjetivo });
+  return res || "Erro ao analisar evolução no servidor.";
+};
+
+export const realizarAnaliseIAHistorico = async (pacienteNome, historico) => {
+  const res = await callGeminiAPI('realizarAnaliseIAHistorico', { pacienteNome, historico });
+  return res || "Erro ao analisar o histórico no servidor.";
+};
+
+export const resolverConflitoAgenda = async (dadosConflito) => {
+  const res = await callGeminiAPI('resolverConflitoAgenda', { dadosConflito });
+  return res || "Sugestão: Tente realocar para o próximo dia útil.";
+};
+
+export const buscarEscalaIA = async (nomeEscala) => {
+  const res = await callGeminiAPI('buscarEscalaIA', { nomeEscala });
+  if (!res) return { erro: "Falha de comunicação com o servidor de escalas." };
+  
+  try {
+    return JSON.parse(res);
+  } catch (e) {
+    return { erro: "O servidor retornou dados em formato inválido." };
+  }
+};
+
+export const analisarCapacidadePaciente = async (historico) => {
+  if (!historico || historico.length === 0) return "O paciente ainda não possui evoluções suficientes para gerar o insight.";
+  const res = await callGeminiAPI('analisarCapacidadePaciente', { historico });
+  return res || "Erro ao processar capacidade funcional.";
+};
+
+export const transcreverExameIA = async (base64Image) => {
+  const res = await callGeminiAPI('transcreverExameIA', { base64Image });
+  return res || "Erro ao processar a transcrição da imagem no servidor.";
 };

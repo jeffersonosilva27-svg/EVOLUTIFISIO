@@ -5,8 +5,6 @@ import {
 } from 'lucide-react';
 import { db } from '../services/firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-
-// IMPORTAÇÃO CORRETA EXATAMENTE COMO ESTAVA NA V1.10.0
 import { temAcessoClinica } from '../App';
 
 const LOCAIS = [

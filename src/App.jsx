@@ -84,7 +84,6 @@ const getMinutos = (horaStr) => {
   return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
 };
 
-// EXPORTAÇÃO CORRETA PARA A AGENDA
 export const temAcessoClinica = (clinicasDoUsuario, clinicaDoItem) => {
   if (!clinicasDoUsuario || !Array.isArray(clinicasDoUsuario) || clinicasDoUsuario.length === 0) return false;
   if (!clinicaDoItem) return true; 
@@ -123,7 +122,7 @@ function MainApp() {
   const [isModalActive, setIsModalActive] = useState(false);
   const [showFaltasModal, setShowFaltasModal] = useState(false);
   const [showPerfilModal, setShowPerfilModal] = useState(false); 
-  const [showWhatsappAlert, setShowWhatsappAlert] = useState(false);
+  const [showWhatsappAlert, setShowWhatsappAlert] = useState(false); // PATCH v1.10.0: Alerta Obrigatório de WhatsApp
   const [carouselIdx, setCarouselIdx] = useState(0);
 
   const [perfilEdit, setPerfilEdit] = useState({ nome: '', email: '', registro: '', whatsapp: '' });
@@ -295,6 +294,7 @@ function MainApp() {
     }
   }, [user, isSuperGestor]);
 
+  // PATCH v1.10.0: Interceptador de Alerta de WhatsApp
   useEffect(() => {
       if (user && (!user.whatsapp || user.whatsapp.trim() === '')) {
           setShowWhatsappAlert(true);
@@ -322,6 +322,7 @@ function MainApp() {
               
               const numero = prof?.whatsapp ? prof.whatsapp.replace(/\D/g, '') : '';
               if (numero) {
+                  // PATCH v1.10.0: Template de WhatsApp Atualizado
                   const primeiroNome = prof.nome ? prof.nome.split(' ')[0] : 'Profissional';
                   const texto = encodeURIComponent(`Dr.(a) ${primeiroNome}. O paciente ${ag.paciente} chegou e lhe aguarda na recepção.`);
                   window.open(`https://wa.me/55${numero}?text=${texto}`, '_blank');
@@ -473,6 +474,7 @@ function MainApp() {
     const planoGeralPaciente = proximoAtendimento ? exerciciosGlobais.filter(e => e.pacienteId === proximoAtendimento.pacienteId).slice(0, 3) : [];
     const listaExibicao = exerciciosDaSessao.length > 0 ? exerciciosDaSessao : planoGeralPaciente;
     
+    // VARIÁVEIS GLOBAIS DE GESTÃO DO MÊS
     const agendaMesGlobal = agendamentosGlobais.filter(a => a.data && a.data.startsWith(mesAtualIso));
     const faltasCriticasMes = agendaMesGlobal.filter(a => a.status === 'cancelado' && ['Cancelamento < 24h', 'Falta sem justificativa'].includes(a.motivoCancelamento));
     const taxaCritica = agendaMesGlobal.length > 0 ? ((faltasCriticasMes.length / agendaMesGlobal.length) * 100).toFixed(1) : 0;
@@ -745,6 +747,7 @@ function MainApp() {
           </div>
       )}
 
+      {/* PATCH v1.10.0: Modal Obrigatório para WhatsApp */}
       {showWhatsappAlert && !showPerfilModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
             <div className="bg-white p-8 rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95 text-center relative overflow-hidden">

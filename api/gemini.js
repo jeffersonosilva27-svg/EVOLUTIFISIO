@@ -1,66 +1,107 @@
+// api/gemini.js
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 export default async function handler(req, res) {
-  // Configuração de CORS para comunicação fluida com o Frontend
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  // Libera a verificação de segurança inicial do navegador
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+  // Apenas aceita requisições POST
   if (req.method !== 'POST') {
-    return res.status(405).json({ erro: 'Método não permitido. Utilize POST.' });
+    return res.status(405).json({ error: 'Método não permitido' });
   }
+
+  // Puxa a chave segura guardada na Vercel (Repare que NÃO tem VITE_)
+  const API_KEY = process.env.GEMINI_API_KEY;
+  
+  if (!API_KEY) {
+    return res.status(500).json({ error: "Chave da API não configurada no servidor Vercel." });
+  }
+
+  const genAI = new GoogleGenerativeAI(API_KEY);
 
   try {
-    const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    const { action, payload } = req.body;
+    let prompt = "";
+    let isJson = false;
+    let imagePart = null;
+
+    // Transfere toda a inteligência dos Prompts para o Servidor (Oculto do utilizador)
+    switch (action) {
+      case 'analisarEvolucao':
+        prompt = `Transforme o relato informal: "${payload.textoSubjetivo}" em uma evolução técnica padrão SOAP. Use terminologia acadêmica.`;
+        break;
+      
+      case 'realizarAnaliseIAHistorico':
+        prompt = `Analise o histórico de ${payload.pacienteNome}: ${JSON.stringify(payload.historico)}. Realize: 1. Análise Qualitativa (Tendências). 2. Análise Quantitativa. 3. Insights Estratégicos. Retorne em Markdown elegante.`;
+        break;
+      
+      case 'resolverConflitoAgenda':
+        prompt = `Houve um conflito na agenda: ${payload.dadosConflito?.motivo}. Dê uma sugestão curta e educada de realocação para o paciente.`;
+        break;
+      
+      case 'buscarEscalaIA':
+        isJson = true;
+        prompt = `
+          ATENÇÃO: Você é um sistema de banco de dados (API). A sua única função é retornar um objeto JSON estruturado.
+          O utilizador buscou pelo teste clínico: "${payload.nomeEscala}".
+
+          REGRAS CRÍTICAS:
+          1. NÃO escreva texto de introdução ou conclusão. Retorne EXCLUSIVAMENTE o código JSON.
+          2. NÃO utilize quebras de linha reais (Enters) dentro dos textos das variáveis.
+          
+          ESTRUTURA OBRIGATÓRIA:
+          {
+            "nome": "Nome completo",
+            "sigla": "Sigla",
+            "objetivo": "Resumo do objetivo",
+            "instrucoes": "Como aplicar a escala",
+            "itens": [
+              {
+                "pergunta": "Pergunta ou tarefa a avaliar",
+                "opcoes": [
+                  {"texto": "Resposta A", "valor": 0},
+                  {"texto": "Resposta B", "valor": 1}
+                ]
+              }
+            ],
+            "interpretacao": "Laudo final"
+          }
+
+          Se a escala não for encontrada no banco científico, retorne APENAS:
+          {"erro": "Escala não encontrada no banco de dados científico."}
+        `;
+        break;
+      
+      case 'analisarCapacidadePaciente':
+        prompt = `Analise estas 3 últimas evoluções: ${JSON.stringify(payload.historico)}. Liste os exercícios realizados e defina a capacidade funcional atual do paciente em uma frase curta e técnica.`;
+        break;
+      
+      case 'transcreverExameIA':
+        prompt = `Analise este exame/documento clínico. Extraia os dados numéricos principais para uma tabela e crie um laudo comparativo baseado na literatura acadêmica fisioterapêutica/médica atual. Retorne em Markdown estruturado separando Dados Obtidos, Comparativo e Laudo Clínico.`;
+        imagePart = { inlineData: { data: payload.base64Image, mimeType: "image/jpeg" } };
+        break;
+
+      default:
+        return res.status(400).json({ error: "Ação de IA desconhecida." });
+    }
+
+    // Configura o modelo
+    const modelConfig = { model: "gemini-1.5-flash-latest" };
+    if (isJson) {
+      modelConfig.generationConfig = { responseMimeType: "application/json" };
+    }
     
-    if (!apiKey) {
-      return res.status(500).json({ erro: 'Chave de API não configurada na Vercel.' });
+    const model = genAI.getGenerativeModel(modelConfig);
+    
+    let result;
+    if (imagePart) {
+      result = await model.generateContent([prompt, imagePart]);
+    } else {
+      result = await model.generateContent(prompt);
     }
 
-    // Blindagem de Parsing: Garante que a Vercel consegue ler o body independentemente da formatação
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const { prompt } = body;
-
-    if (!prompt) {
-      return res.status(400).json({ erro: 'Prompt não recebido do frontend.' });
-    }
-
-    // PATCH v1.10.5: MODELO DEFINITIVO PARA CONTAS GRATUITAS
-    // Usamos o gemini-1.5-flash, que é o modelo oficial e 100% liberado 
-    // para contas novas sem exigência de configuração de faturamento (Billing).
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
-    const googleRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      })
-    });
-
-    const data = await googleRes.json();
-
-    // Se o Google devolver algum erro na requisição nativa, capturamos aqui
-    if (!googleRes.ok) {
-      throw new Error(data.error?.message || 'Erro desconhecido na API REST do Google.');
-    }
-
-    // Navega diretamente no JSON de resposta do Google para extrair o texto gerado
-    const respostaTexto = data.candidates[0].content.parts[0].text;
-
-    return res.status(200).json({ resultado: respostaTexto });
+    const texto = await result.response.text();
+    return res.status(200).json({ result: texto });
 
   } catch (error) {
-    console.error('Erro na API Gemini:', error);
-    // Expondo a MENSAGEM REAL DO ERRO para o frontend para facilitar a nossa depuração
-    return res.status(500).json({ erro: `Erro no Servidor: ${error.message}` });
+    console.error("Erro no Servidor Gemini:", error);
+    return res.status(500).json({ error: error.message });
   }
 }
